@@ -1,0 +1,5 @@
+exe-tool/*.xlsx
+exe-tool/build/
+exe-tool/dist/
+exe-tool/__pycache__/
+exe-tool/*.spec
