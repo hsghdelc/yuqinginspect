@@ -21,7 +21,7 @@ DEFAULT_SCHEME_ID = "default"
 
 DEFAULT_SCHEME = {
     "id": DEFAULT_SCHEME_ID,
-    "name": "默认宏结构方案",
+    "name": "默认结构方案",
     "fields": {
         "keep": "AG",
         "company": "H",
@@ -88,7 +88,7 @@ DEFAULT_SCHEME = {
             "case_sensitive": False,
             "conditions": [],
             "sampling": {"enabled": False, "mode": "按比例", "value": 0.2, "min_count": 1},
-            "overtime": {"enabled": False, "send_column": "A", "process_column": "AB", "threshold_minutes": 20, "id_column": "B"},
+            "overtime": {"enabled": False, "mode": "按起止时间计算", "send_column": "A", "process_column": "AB", "duration_column": "", "threshold_minutes": 20, "id_column": "B"},
         },
         {
             "name": "无效复核",
@@ -102,7 +102,7 @@ DEFAULT_SCHEME = {
             "case_sensitive": False,
             "conditions": [{"column": "R", "operator": "等于", "value": "否"}],
             "sampling": {"enabled": True, "mode": "按比例", "value": 0.2, "min_count": 1},
-            "overtime": {"enabled": False, "send_column": "A", "process_column": "AB", "threshold_minutes": 20, "id_column": "B"},
+            "overtime": {"enabled": False, "mode": "按起止时间计算", "send_column": "A", "process_column": "AB", "duration_column": "", "threshold_minutes": 20, "id_column": "B"},
         },
         {
             "name": "舆情提醒复核",
@@ -116,7 +116,7 @@ DEFAULT_SCHEME = {
             "case_sensitive": False,
             "conditions": [{"column": "T", "operator": "等于", "value": "舆情提醒"}],
             "sampling": {"enabled": False, "mode": "按比例", "value": 0.2, "min_count": 1},
-            "overtime": {"enabled": False, "send_column": "A", "process_column": "AB", "threshold_minutes": 20, "id_column": "B"},
+            "overtime": {"enabled": False, "mode": "按起止时间计算", "send_column": "A", "process_column": "AB", "duration_column": "", "threshold_minutes": 20, "id_column": "B"},
         },
         {
             "name": "超时检查",
@@ -134,7 +134,7 @@ DEFAULT_SCHEME = {
                 {"column": "U", "operator": "等于", "value": "否"},
             ],
             "sampling": {"enabled": False, "mode": "按比例", "value": 0.2, "min_count": 1},
-            "overtime": {"enabled": True, "send_column": "A", "process_column": "AB", "threshold_minutes": 20, "id_column": "B"},
+            "overtime": {"enabled": True, "mode": "按起止时间计算", "send_column": "A", "process_column": "AB", "duration_column": "", "threshold_minutes": 20, "id_column": "B"},
         },
     ],
     "invalid_sample_rate": 0.2,
@@ -185,6 +185,8 @@ def _normalize_schemes(config):
         merged = copy_json(DEFAULT_SCHEME)
         merged.update(scheme or {})
         merged["id"] = scheme_id
+        if scheme_id == DEFAULT_SCHEME_ID and merged.get("name") == "默认宏结构方案":
+            merged["name"] = DEFAULT_SCHEME["name"]
         merged["fields"] = {**DEFAULT_SCHEME["fields"], **((scheme or {}).get("fields") or {})}
         merged["values"] = {**DEFAULT_SCHEME["values"], **((scheme or {}).get("values") or {})}
         merged["field_items"] = _normalize_field_items(merged)
@@ -317,8 +319,10 @@ def _normalize_review_plans(scheme):
             ]
             plan["overtime"] = {
                 "enabled": True,
+                "mode": "按起止时间计算",
                 "send_column": fields.get("send_time", "A"),
                 "process_column": fields.get("process_time", "AB"),
+                "duration_column": "",
                 "threshold_minutes": float(scheme.get("overtime_threshold_minutes", 20) or 20),
                 "id_column": fields.get("id", "B"),
             }
@@ -355,8 +359,10 @@ def _normalize_review_plan(plan):
         },
         "overtime": {
             "enabled": overtime.get("enabled", False) is True,
+            "mode": str(overtime.get("mode") or "按起止时间计算").strip(),
             "send_column": str(overtime.get("send_column") or "A").strip(),
             "process_column": str(overtime.get("process_column") or "AB").strip(),
+            "duration_column": str(overtime.get("duration_column") or "").strip(),
             "threshold_minutes": overtime.get("threshold_minutes", 20),
             "id_column": str(overtime.get("id_column") or "B").strip(),
         },
@@ -576,20 +582,33 @@ def _apply_plan_overtime(rows, plan, headers, duration_col):
         return rows, []
     send_col = _resolve_col(overtime.get("send_column"), headers, 1)
     process_col = _resolve_col(overtime.get("process_column"), headers, 28)
+    duration_source_col = _resolve_col(overtime.get("duration_column"), headers, 0) if overtime.get("duration_column") else 0
     id_col = _resolve_col(overtime.get("id_column"), headers, 2)
     threshold = float(overtime.get("threshold_minutes", 20) or 20)
     overtime_ids = []
     updated_rows = []
     for row in rows:
-        send_time = _parse_datetime(_row_value(row, send_col))
-        process_time = _parse_datetime(_row_value(row, process_col))
-        if send_time and process_time:
-            minutes = round((process_time - send_time).total_seconds() / 60, 2)
+        if overtime.get("mode") == "使用已有处理时长列" and duration_source_col:
+            raw_minutes = _row_value(row, duration_source_col)
+            try:
+                minutes = round(float(raw_minutes), 2)
+                row = _set_row_value(row, duration_col, minutes)
+            except (TypeError, ValueError):
+                minutes = None
+                row = _set_row_value(row, duration_col, "时长格式错误")
+        else:
+            send_time = _parse_datetime(_row_value(row, send_col))
+            process_time = _parse_datetime(_row_value(row, process_col))
+            if send_time and process_time:
+                minutes = round((process_time - send_time).total_seconds() / 60, 2)
+                row = _set_row_value(row, duration_col, minutes)
+            else:
+                minutes = None
+                row = _set_row_value(row, duration_col, "时间格式错误")
+        if minutes is not None:
             row = _set_row_value(row, duration_col, minutes)
             if minutes > threshold:
                 overtime_ids.append(_row_text(row, id_col))
-        else:
-            row = _set_row_value(row, duration_col, "时间格式错误")
         updated_rows.append(row)
     return updated_rows, overtime_ids
 

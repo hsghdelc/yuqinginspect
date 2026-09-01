@@ -27,7 +27,7 @@ class ReviewTool(BaseTk):
         self.input_path = tk.StringVar()
         self.output_dir = tk.StringVar(value=str(Path.home() / "Desktop"))
         self.inspector = tk.StringVar()
-        self.status = tk.StringVar(value="请选择或拖入舆情质检明细 Excel 文件")
+        self.status = tk.StringVar(value="")
         self.scheme_var = tk.StringVar()
         self.scheme_options = []
         self.last_report_text = ""
@@ -66,12 +66,7 @@ class ReviewTool(BaseTk):
         ttk.Label(form, text="质检人员", width=10, anchor="e").grid(row=3, column=0, sticky="e", padx=(0, 10), pady=7)
         ttk.Entry(form, textvariable=self.inspector).grid(row=3, column=1, sticky="ew", pady=7)
 
-        self.drop_tip = ttk.Label(
-            form,
-            text="可将 .xlsx / .xlsm 文件拖入窗口；如拖入不可用，请点击“选择”。",
-            foreground="#546179",
-        )
-        self.drop_tip.grid(row=4, column=1, columnspan=2, sticky="w", pady=(4, 0))
+        self.drop_tip = ttk.Label(form, text="", foreground="#546179")
 
         body = ttk.Frame(self, padding=(18, 0, 18, 0))
         body.grid(row=2, column=0, sticky="nsew")
@@ -80,12 +75,12 @@ class ReviewTool(BaseTk):
 
         actions = ttk.Frame(body)
         actions.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        actions.columnconfigure(0, weight=1)
         self.run_button = ttk.Button(actions, text="开始处理", command=self.run)
-        self.run_button.pack(side="left")
-        ttk.Button(actions, text="清空日志", command=lambda: self.log.delete("1.0", "end")).pack(side="left", padx=8)
+        self.run_button.grid(row=0, column=1, sticky="e")
+        ttk.Button(actions, text="清空日志", command=lambda: self.log.delete("1.0", "end")).grid(row=0, column=2, sticky="e", padx=(8, 0))
         self.copy_button = ttk.Button(actions, text="复制日报送内容", command=self.copy_report, state="disabled")
-        self.copy_button.pack(side="left")
-        ttk.Label(actions, textvariable=self.status, foreground="#1f5fbf").pack(side="right")
+        self.copy_button.grid(row=0, column=3, sticky="e", padx=(8, 0))
 
         log_frame = ttk.LabelFrame(body, text="处理日志", padding=(8, 8))
         log_frame.grid(row=1, column=0, sticky="nsew")
@@ -93,6 +88,7 @@ class ReviewTool(BaseTk):
         log_frame.rowconfigure(0, weight=1)
         self.log = scrolledtext.ScrolledText(log_frame, height=18, wrap="word")
         self.log.grid(row=0, column=0, sticky="nsew")
+        self.log.tag_config("red", foreground="#c00000")
         self._log("使用说明：选择或拖入舆情质检明细 Excel，确认输出目录和质检人员后点击“开始处理”。处理完成后可一键复制日报送内容。")
 
     def _row(self, parent, row, label, var, command):
@@ -102,7 +98,6 @@ class ReviewTool(BaseTk):
 
     def _enable_drop(self):
         if not DND_FILES:
-            self.drop_tip.config(text="当前运行环境未启用拖入文件；请点击“选择”添加源文件。")
             return
         self.drop_target_register(DND_FILES)
         self.dnd_bind("<<Drop>>", self._on_drop)
@@ -116,7 +111,6 @@ class ReviewTool(BaseTk):
             messagebox.showwarning("提示", "请拖入 .xlsx 或 .xlsm 文件")
             return
         self.input_path.set(str(path))
-        self.status.set("已识别拖入文件")
 
     def choose_file(self):
         path = filedialog.askopenfilename(
@@ -206,7 +200,9 @@ class ReviewTool(BaseTk):
         self._log(f"舆情提醒复核：{result['reminder_count']} 条")
         self._log(f"无效复核抽样：{result['invalid_count']} 条")
         if result["overtime_count"]:
-            self._log("超时预警：" + str(result["overtime_count"]) + " 条，编号：" + "、".join(result["overtime_ids"]))
+            text = "超时预警：" + str(result["overtime_count"]) + " 条，编号：" + "、".join(result["overtime_ids"])
+            self._log(text, "red")
+            messagebox.showwarning("超时预警", text)
         else:
             self._log("超时预警：未查询到超时舆情")
         self._log("日报送文本：" + result["report_text"])
@@ -227,8 +223,11 @@ class ReviewTool(BaseTk):
         self.clipboard_append(self.last_report_text)
         self.status.set("日报送内容已复制")
 
-    def _log(self, text):
-        self.log.insert("end", text + "\n")
+    def _log(self, text, tag=None):
+        if tag:
+            self.log.insert("end", text + "\n", tag)
+        else:
+            self.log.insert("end", text + "\n")
         self.log.see("end")
 
 
@@ -265,8 +264,8 @@ class SchemeConfigWindow(tk.Toplevel):
         super().__init__(parent)
         self.parent = parent
         self.title("方案配置")
-        self.geometry("900x650")
-        self.minsize(840, 590)
+        self.geometry("1180x800")
+        self.minsize(1040, 700)
         self.transient(parent)
 
         self.config_data = load_config()
@@ -323,28 +322,20 @@ class SchemeConfigWindow(tk.Toplevel):
         notebook.add(values_tab, text="质检计划")
         notebook.add(company_tab, text="公司名单")
 
-        fields_tab.columnconfigure(1, weight=1)
-        fields_tab.rowconfigure(2, weight=1)
+        fields_tab.columnconfigure(0, weight=1)
+        fields_tab.rowconfigure(1, weight=1)
         field_actions = ttk.Frame(fields_tab)
-        field_actions.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+        field_actions.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         ttk.Button(field_actions, text="新增字段", command=self.add_field_row).pack(side="left")
         ttk.Label(
             field_actions,
             text="用途决定程序逻辑，显示名称和列可按源表调整；专项关键词匹配列可填多个，如 C,K。",
             foreground="#546179",
         ).pack(side="left", padx=(10, 0))
-        field_header = ttk.Frame(fields_tab)
-        field_header.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 4))
-        field_header.columnconfigure(2, weight=1)
-        field_header.columnconfigure(3, weight=2)
-        ttk.Label(field_header, text="启用", width=4).grid(row=0, column=0, padx=(0, 6))
-        ttk.Label(field_header, text="用途", width=22).grid(row=0, column=1, padx=(0, 6))
-        ttk.Label(field_header, text="显示名称").grid(row=0, column=2, sticky="w", padx=(0, 6))
-        ttk.Label(field_header, text="匹配列 / 字段列").grid(row=0, column=3, sticky="w", padx=(0, 6))
-        self.field_rows_frame = self._make_scroll_area(fields_tab, row=2)
+        self.field_rows_frame = self._make_scroll_area(fields_tab, row=1)
 
         values_tab.columnconfigure(0, weight=1)
-        values_tab.rowconfigure(2, weight=1)
+        values_tab.rowconfigure(1, weight=1)
         value_actions = ttk.Frame(values_tab)
         value_actions.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         ttk.Button(value_actions, text="新增质检计划", command=self.add_plan_row).pack(side="left")
@@ -353,20 +344,7 @@ class SchemeConfigWindow(tk.Toplevel):
             text="每个计划可单独配置筛选方式、导出、抽样和超时检查。",
             foreground="#546179",
         ).pack(side="left", padx=(10, 0))
-        value_header = ttk.Frame(values_tab)
-        value_header.grid(row=1, column=0, sticky="ew", pady=(0, 4))
-        value_header.columnconfigure(2, weight=1)
-        value_header.columnconfigure(3, weight=2)
-        value_header.columnconfigure(4, weight=1)
-        ttk.Label(value_header, text="启用", width=4).grid(row=0, column=0, padx=(0, 6))
-        ttk.Label(value_header, text="计划名称", width=16).grid(row=0, column=1, padx=(0, 6))
-        ttk.Label(value_header, text="筛选方式", width=14).grid(row=0, column=2, padx=(0, 6))
-        ttk.Label(value_header, text="导出", width=4).grid(row=0, column=3, padx=(0, 6))
-        ttk.Label(value_header, text="筛选列/条件").grid(row=0, column=4, sticky="w", padx=(0, 6))
-        ttk.Label(value_header, text="关键词/匹配值").grid(row=0, column=5, sticky="w", padx=(0, 6))
-        ttk.Label(value_header, text="抽样").grid(row=0, column=6, sticky="w", padx=(0, 6))
-        ttk.Label(value_header, text="超时").grid(row=0, column=7, sticky="w", padx=(0, 6))
-        self.plan_rows_frame = self._make_scroll_area(values_tab, row=2)
+        self.plan_rows_frame = self._make_scroll_area(values_tab, row=1)
 
         company_tab.columnconfigure(0, weight=1)
         company_tab.rowconfigure(0, weight=1)
@@ -427,6 +405,8 @@ class SchemeConfigWindow(tk.Toplevel):
             return True
         field_items = self._collect_field_items()
         review_plans = self._collect_review_plans()
+        if review_plans is None:
+            return False
         value_rules = self._value_rules_from_plans(review_plans)
         fields = {}
         for item in field_items:
@@ -495,7 +475,7 @@ class SchemeConfigWindow(tk.Toplevel):
 
     def delete_scheme(self):
         if self.current_scheme_id == DEFAULT_SCHEME_ID:
-            messagebox.showwarning("提示", "默认宏结构方案不能删除")
+            messagebox.showwarning("提示", "默认结构方案不能删除")
             return
         if not messagebox.askyesno("确认删除", "确认删除当前方案？"):
             return
@@ -513,7 +493,7 @@ class SchemeConfigWindow(tk.Toplevel):
             default["name"] = self.name_var.get().strip() or self.current_scheme_id
         self.schemes[self.current_scheme_id] = default
         self.load_scheme(self.current_scheme_id)
-        messagebox.showinfo("已恢复", "当前方案已恢复为默认宏结构")
+        messagebox.showinfo("已恢复", "当前方案已恢复为默认结构")
 
     def set_active_scheme(self):
         self.save_current_scheme(show_message=False)
@@ -553,12 +533,38 @@ class SchemeConfigWindow(tk.Toplevel):
         canvas = tk.Canvas(parent, highlightthickness=0)
         scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
         frame = ttk.Frame(canvas)
+        frame.columnconfigure(0, weight=1)
         frame.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas_window = canvas.create_window((0, 0), window=frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
         canvas.grid(row=row, column=0, sticky="nsew")
         scrollbar.grid(row=row, column=1, sticky="ns")
         canvas.bind("<Configure>", lambda event: canvas.itemconfigure(canvas_window, width=event.width))
+        def _wheel(event):
+            if getattr(event, "num", None) == 4:
+                canvas.yview_scroll(-3, "units")
+            elif getattr(event, "num", None) == 5:
+                canvas.yview_scroll(3, "units")
+            else:
+                canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        def _bind_wheel(_event):
+            canvas.bind_all("<MouseWheel>", _wheel)
+            canvas.bind_all("<Button-4>", _wheel)
+            canvas.bind_all("<Button-5>", _wheel)
+        def _unbind_wheel(_event):
+            canvas.unbind_all("<MouseWheel>")
+            canvas.unbind_all("<Button-4>")
+            canvas.unbind_all("<Button-5>")
+        canvas.bind("<Enter>", _bind_wheel)
+        canvas.bind("<Leave>", _unbind_wheel)
+        frame.bind("<Enter>", _bind_wheel)
+        frame.bind("<Leave>", _unbind_wheel)
+        canvas.bind("<MouseWheel>", _wheel)
+        canvas.bind("<Button-4>", _wheel)
+        canvas.bind("<Button-5>", _wheel)
+        frame.bind("<MouseWheel>", _wheel)
+        frame.bind("<Button-4>", _wheel)
+        frame.bind("<Button-5>", _wheel)
         return frame
 
     def _field_display(self, key):
@@ -609,13 +615,20 @@ class SchemeConfigWindow(tk.Toplevel):
     def _scheme_review_plans(self, scheme):
         return copy_json(scheme.get("review_plans") or DEFAULT_SCHEME["review_plans"])
 
+    def _fill_company_keywords(self, target_var):
+        names = [line.strip() for line in self.company_text.get("1.0", "end").splitlines() if line.strip()]
+        if not names:
+            messagebox.showinfo("提示", "公司名单为空，无法填入关键词。")
+            return
+        target_var.set("，".join(names))
+
     def add_field_row(self, item=None):
         item = item or {"key": "custom_field", "label": "自定义字段", "column": "", "enabled": True}
         row_index = len(self.field_row_vars)
-        row = ttk.Frame(self.field_rows_frame, padding=(0, 3))
-        row.grid(row=row_index, column=0, sticky="ew")
-        row.columnconfigure(2, weight=1)
-        row.columnconfigure(3, weight=2)
+        row = ttk.LabelFrame(self.field_rows_frame, text=item.get("label") or "字段", padding=(10, 8))
+        row.grid(row=row_index, column=0, sticky="ew", pady=(0, 8))
+        row.columnconfigure(1, weight=1)
+        row.columnconfigure(3, weight=1)
         enabled_var = tk.BooleanVar(value=item.get("enabled", True) is not False)
         key_var = tk.StringVar(value=self._field_display(item.get("key") or "custom_field"))
         label_var = tk.StringVar(value=item.get("label") or item.get("key") or "")
@@ -623,12 +636,15 @@ class SchemeConfigWindow(tk.Toplevel):
         if isinstance(column, list):
             column = ",".join(str(part) for part in column)
         column_var = tk.StringVar(value=str(column))
-        ttk.Checkbutton(row, variable=enabled_var).grid(row=0, column=0, padx=(0, 6))
-        ttk.Combobox(row, textvariable=key_var, values=[self._field_display(key) for key, _ in self.FIELD_OPTIONS], width=22).grid(row=0, column=1, sticky="ew", padx=(0, 6))
-        ttk.Entry(row, textvariable=label_var).grid(row=0, column=2, sticky="ew", padx=(0, 6))
+        ttk.Checkbutton(row, text="启用", variable=enabled_var).grid(row=0, column=0, sticky="w", padx=(0, 10), pady=3)
+        ttk.Label(row, text="用途").grid(row=0, column=1, sticky="w", pady=3)
+        ttk.Label(row, text="显示名称").grid(row=0, column=3, sticky="w", pady=3)
+        ttk.Combobox(row, textvariable=key_var, values=[self._field_display(key) for key, _ in self.FIELD_OPTIONS], state="readonly").grid(row=1, column=1, sticky="ew", padx=(0, 12), pady=3)
+        ttk.Entry(row, textvariable=label_var).grid(row=1, column=3, sticky="ew", padx=(0, 12), pady=3)
+        ttk.Label(row, text="匹配列 / 字段列").grid(row=2, column=0, columnspan=2, sticky="w", pady=(7, 3))
         combo = ttk.Combobox(row, textvariable=column_var, values=self._column_choices())
-        combo.grid(row=0, column=3, sticky="ew", padx=(0, 6))
-        ttk.Button(row, text="删除", command=lambda: self._delete_dynamic_row(self.field_row_vars, row)).grid(row=0, column=4)
+        combo.grid(row=3, column=0, columnspan=4, sticky="ew", padx=(0, 12), pady=3)
+        ttk.Button(row, text="删除字段", command=lambda: self._delete_dynamic_row(self.field_row_vars, row)).grid(row=3, column=4, sticky="e", pady=3)
         self.field_row_vars.append({"frame": row, "enabled": enabled_var, "key": key_var, "label": label_var, "column": column_var, "combo": combo})
 
     def add_plan_row(self, item=None):
@@ -642,15 +658,15 @@ class SchemeConfigWindow(tk.Toplevel):
             "keywords": "",
             "conditions": [{"column": "", "operator": "等于", "value": ""}],
             "sampling": {"enabled": False, "mode": "按比例", "value": 0.2, "min_count": 1},
-            "overtime": {"enabled": False, "send_column": "A", "process_column": "AB", "threshold_minutes": 20, "id_column": "B"},
+            "overtime": {"enabled": False, "mode": "按起止时间计算", "send_column": "A", "process_column": "AB", "duration_column": "", "threshold_minutes": 20, "id_column": "B"},
         }
         sampling = item.get("sampling") or {}
         overtime = item.get("overtime") or {}
         row_index = len(self.plan_row_vars)
         card = ttk.LabelFrame(self.plan_rows_frame, text=item.get("name") or "质检计划", padding=(10, 8))
         card.grid(row=row_index, column=0, sticky="ew", pady=(0, 10))
-        card.columnconfigure(1, weight=1)
-        card.columnconfigure(3, weight=1)
+        for col in range(4):
+            card.columnconfigure(col, weight=1)
 
         enabled_var = tk.BooleanVar(value=item.get("enabled", True) is not False)
         output_var = tk.BooleanVar(value=item.get("output_sheet", True) is not False)
@@ -664,46 +680,73 @@ class SchemeConfigWindow(tk.Toplevel):
         sampling_value_var = tk.StringVar(value=str(sampling.get("value", 0.2)))
         sampling_min_var = tk.StringVar(value=str(sampling.get("min_count", 1)))
         overtime_enabled_var = tk.BooleanVar(value=overtime.get("enabled") is True)
+        overtime_mode_var = tk.StringVar(value=overtime.get("mode") or "按起止时间计算")
         send_var = tk.StringVar(value=str(overtime.get("send_column") or "A"))
         process_var = tk.StringVar(value=str(overtime.get("process_column") or "AB"))
+        duration_var = tk.StringVar(value=str(overtime.get("duration_column") or ""))
         threshold_var = tk.StringVar(value=str(overtime.get("threshold_minutes", 20)))
         id_var = tk.StringVar(value=str(overtime.get("id_column") or "B"))
 
-        ttk.Checkbutton(card, text="启用", variable=enabled_var).grid(row=0, column=0, sticky="w", padx=(0, 8), pady=3)
-        ttk.Entry(card, textvariable=name_var).grid(row=0, column=1, sticky="ew", padx=(0, 8), pady=3)
-        ttk.Combobox(card, textvariable=match_type_var, values=["按月份专项关键词", "关键词筛选", "条件筛选"], state="readonly", width=18).grid(row=0, column=2, sticky="ew", padx=(0, 8), pady=3)
-        ttk.Checkbutton(card, text="导出表", variable=output_var).grid(row=0, column=3, sticky="w", padx=(0, 8), pady=3)
-        ttk.Button(card, text="删除计划", command=lambda: self._delete_dynamic_row(self.plan_row_vars, card)).grid(row=0, column=4, sticky="e", pady=3)
+        header = ttk.Frame(card)
+        header.grid(row=0, column=0, columnspan=4, sticky="ew", pady=(0, 8))
+        header.columnconfigure(1, weight=1)
+        ttk.Checkbutton(header, text="启用", variable=enabled_var).grid(row=0, column=0, sticky="w", padx=(0, 8))
+        ttk.Entry(header, textvariable=name_var).grid(row=0, column=1, sticky="ew", padx=(0, 8))
+        ttk.Combobox(header, textvariable=match_type_var, values=["按月份专项关键词", "关键词筛选", "条件筛选"], state="readonly", width=18).grid(row=0, column=2, sticky="e", padx=(0, 8))
+        ttk.Checkbutton(header, text="导出工作表", variable=output_var).grid(row=0, column=3, sticky="e", padx=(0, 8))
+        ttk.Button(header, text="删除计划", command=lambda: self._delete_dynamic_row(self.plan_row_vars, card)).grid(row=0, column=4, sticky="e")
 
-        ttk.Label(card, text="关键词匹配列").grid(row=1, column=0, sticky="e", padx=(0, 8), pady=3)
+        ttk.Label(card, text="关键词匹配列").grid(row=1, column=0, sticky="w", pady=(0, 3))
+        ttk.Label(card, text="关键词").grid(row=1, column=1, sticky="w", pady=(0, 3))
+        ttk.Label(card, text="条件筛选").grid(row=1, column=2, columnspan=2, sticky="w", pady=(0, 3))
         col_combo = ttk.Combobox(card, textvariable=columns_var, values=self._column_choices())
-        col_combo.grid(row=1, column=1, sticky="ew", padx=(0, 8), pady=3)
-        ttk.Label(card, text="关键词").grid(row=1, column=2, sticky="e", padx=(0, 8), pady=3)
-        ttk.Entry(card, textvariable=keywords_var).grid(row=1, column=3, columnspan=2, sticky="ew", pady=3)
+        col_combo.grid(row=2, column=0, sticky="ew", padx=(0, 8), pady=3)
+        keyword_frame = ttk.Frame(card)
+        keyword_frame.grid(row=2, column=1, sticky="ew", padx=(0, 8), pady=3)
+        keyword_frame.columnconfigure(0, weight=1)
+        ttk.Entry(keyword_frame, textvariable=keywords_var).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        ttk.Button(keyword_frame, text="填入公司名单", command=lambda: self._fill_company_keywords(keywords_var)).grid(row=0, column=1)
+        ttk.Entry(card, textvariable=conditions_var).grid(row=2, column=2, columnspan=2, sticky="ew", pady=3)
 
-        ttk.Label(card, text="条件").grid(row=2, column=0, sticky="e", padx=(0, 8), pady=3)
-        ttk.Entry(card, textvariable=conditions_var).grid(row=2, column=1, columnspan=4, sticky="ew", pady=3)
-        ttk.Label(card, text="格式：列=值；多条件用分号，例如 R=否;S=是。关键词计划可留空。", foreground="#546179").grid(row=3, column=1, columnspan=4, sticky="w")
+        ttk.Label(card, text="多个关键词用逗号、顿号或换行分隔；条件格式：列=值，多条件用分号，例如 R=否;S=是。", foreground="#546179").grid(row=3, column=0, columnspan=4, sticky="w", pady=(0, 6))
 
-        ttk.Checkbutton(card, text="启用随机抽样", variable=sampling_enabled_var).grid(row=4, column=0, sticky="w", pady=(8, 3))
-        ttk.Combobox(card, textvariable=sampling_mode_var, values=["按比例", "按数量"], state="readonly", width=10).grid(row=4, column=1, sticky="w", pady=(8, 3))
-        ttk.Label(card, text="抽样值").grid(row=4, column=1, sticky="e", padx=(0, 150), pady=(8, 3))
-        ttk.Entry(card, textvariable=sampling_value_var, width=10).grid(row=4, column=1, sticky="e", padx=(0, 70), pady=(8, 3))
-        ttk.Label(card, text="最少").grid(row=4, column=2, sticky="e", padx=(0, 8), pady=(8, 3))
-        ttk.Entry(card, textvariable=sampling_min_var, width=10).grid(row=4, column=3, sticky="w", pady=(8, 3))
+        sample_box = ttk.LabelFrame(card, text="随机抽样", padding=(8, 6))
+        sample_box.grid(row=4, column=0, columnspan=4, sticky="ew", pady=(0, 8))
+        sample_box.columnconfigure(1, weight=1)
+        sample_box.columnconfigure(3, weight=1)
+        ttk.Checkbutton(sample_box, text="启用随机抽样", variable=sampling_enabled_var).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 5))
+        ttk.Label(sample_box, text="抽样方式").grid(row=1, column=0, sticky="w", padx=(0, 6), pady=3)
+        ttk.Combobox(sample_box, textvariable=sampling_mode_var, values=["按比例", "按数量"], state="readonly", width=12).grid(row=1, column=1, sticky="ew", padx=(0, 18), pady=3)
+        ttk.Label(sample_box, text="抽样值").grid(row=1, column=2, sticky="w", padx=(0, 6), pady=3)
+        ttk.Entry(sample_box, textvariable=sampling_value_var, width=12).grid(row=1, column=3, sticky="ew", pady=3)
+        ttk.Label(sample_box, text="最少条数").grid(row=2, column=0, sticky="w", padx=(0, 6), pady=3)
+        ttk.Entry(sample_box, textvariable=sampling_min_var, width=12).grid(row=2, column=1, sticky="ew", padx=(0, 18), pady=3)
+        ttk.Label(sample_box, text="按比例：0.2 表示 20%，也可填 20；按数量：抽样值表示固定抽取条数。", foreground="#546179").grid(row=2, column=2, columnspan=2, sticky="w", pady=3)
 
-        ttk.Checkbutton(card, text="启用超时检查", variable=overtime_enabled_var).grid(row=5, column=0, sticky="w", pady=3)
-        ttk.Label(card, text="派发时间列").grid(row=5, column=1, sticky="w", pady=3)
-        send_combo = ttk.Combobox(card, textvariable=send_var, values=self._column_choices(), width=14)
-        send_combo.grid(row=5, column=1, sticky="e", padx=(0, 80), pady=3)
-        ttk.Label(card, text="处理时间列").grid(row=5, column=2, sticky="e", padx=(0, 8), pady=3)
-        process_combo = ttk.Combobox(card, textvariable=process_var, values=self._column_choices(), width=14)
-        process_combo.grid(row=5, column=3, sticky="w", pady=3)
-        ttk.Label(card, text="阈值").grid(row=6, column=1, sticky="w", pady=3)
-        ttk.Entry(card, textvariable=threshold_var, width=10).grid(row=6, column=1, sticky="e", padx=(0, 80), pady=3)
-        ttk.Label(card, text="编号列").grid(row=6, column=2, sticky="e", padx=(0, 8), pady=3)
-        id_combo = ttk.Combobox(card, textvariable=id_var, values=self._column_choices(), width=14)
-        id_combo.grid(row=6, column=3, sticky="w", pady=3)
+        overtime_box = ttk.LabelFrame(card, text="超时检查", padding=(8, 6))
+        overtime_box.grid(row=5, column=0, columnspan=4, sticky="ew")
+        overtime_box.columnconfigure(1, weight=1)
+        overtime_box.columnconfigure(3, weight=1)
+        overtime_box.columnconfigure(5, weight=1)
+        ttk.Checkbutton(overtime_box, text="启用超时检查", variable=overtime_enabled_var).grid(row=0, column=0, columnspan=6, sticky="w", pady=(0, 5))
+        ttk.Label(overtime_box, text="计算方式").grid(row=1, column=0, sticky="w", padx=(0, 6), pady=3)
+        ttk.Combobox(overtime_box, textvariable=overtime_mode_var, values=["按起止时间计算", "使用已有处理时长列"], state="readonly", width=18).grid(row=1, column=1, sticky="ew", padx=(0, 14), pady=3)
+        ttk.Label(overtime_box, text="阈值(分钟)").grid(row=1, column=2, sticky="w", padx=(0, 6), pady=3)
+        ttk.Entry(overtime_box, textvariable=threshold_var, width=12).grid(row=1, column=3, sticky="ew", padx=(0, 14), pady=3)
+        ttk.Label(overtime_box, text="编号列").grid(row=1, column=4, sticky="w", padx=(0, 6), pady=3)
+        id_combo = ttk.Combobox(overtime_box, textvariable=id_var, values=self._column_choices(), width=16)
+        id_combo.grid(row=1, column=5, sticky="ew", pady=3)
+
+        ttk.Label(overtime_box, text="派发时间列").grid(row=2, column=0, sticky="w", padx=(0, 6), pady=3)
+        send_combo = ttk.Combobox(overtime_box, textvariable=send_var, values=self._column_choices(), width=16)
+        send_combo.grid(row=2, column=1, sticky="ew", padx=(0, 14), pady=3)
+        ttk.Label(overtime_box, text="处理时间列").grid(row=2, column=2, sticky="w", padx=(0, 6), pady=3)
+        process_combo = ttk.Combobox(overtime_box, textvariable=process_var, values=self._column_choices(), width=16)
+        process_combo.grid(row=2, column=3, sticky="ew", padx=(0, 14), pady=3)
+        ttk.Label(overtime_box, text="已有时长列").grid(row=2, column=4, sticky="w", padx=(0, 6), pady=3)
+        duration_combo = ttk.Combobox(overtime_box, textvariable=duration_var, values=self._column_choices(), width=16)
+        duration_combo.grid(row=2, column=5, sticky="ew", pady=3)
+        ttk.Label(overtime_box, text="按起止时间计算时使用“处理时间列 - 派发时间列”；如果源表已有处理时长，则选择“使用已有处理时长列”并填写已有时长列。", foreground="#546179").grid(row=3, column=0, columnspan=6, sticky="w", pady=(2, 0))
 
         self.plan_row_vars.append({
             "frame": card,
@@ -720,11 +763,13 @@ class SchemeConfigWindow(tk.Toplevel):
             "sampling_value": sampling_value_var,
             "sampling_min": sampling_min_var,
             "overtime_enabled": overtime_enabled_var,
+            "overtime_mode": overtime_mode_var,
             "send": send_var,
             "process": process_var,
+            "duration": duration_var,
             "threshold": threshold_var,
             "id": id_var,
-            "combos": [col_combo, send_combo, process_combo, id_combo],
+            "combos": [col_combo, send_combo, process_combo, duration_combo, id_combo],
         })
 
     def _delete_dynamic_row(self, rows, frame):
@@ -761,7 +806,7 @@ class SchemeConfigWindow(tk.Toplevel):
                 threshold = float(row["threshold"].get() or 20)
             except ValueError:
                 messagebox.showerror("配置错误", "抽样值、最少条数和超时阈值必须是数字。")
-                return []
+                return None
             plans.append({
                 "name": row["name"].get().strip() or "质检计划",
                 "role": row.get("role", ""),
@@ -781,8 +826,10 @@ class SchemeConfigWindow(tk.Toplevel):
                 },
                 "overtime": {
                     "enabled": bool(row["overtime_enabled"].get()),
+                    "mode": row["overtime_mode"].get().strip() or "按起止时间计算",
                     "send_column": row["send"].get().strip() or "A",
                     "process_column": row["process"].get().strip() or "AB",
+                    "duration_column": row["duration"].get().strip(),
                     "threshold_minutes": threshold,
                     "id_column": row["id"].get().strip() or "B",
                 },
@@ -839,6 +886,9 @@ class SchemeConfigWindow(tk.Toplevel):
                 operator = "不等于"
             elif "=" in item:
                 column, value = item.split("=", 1)
+            elif "不包含" in item:
+                column, value = item.split("不包含", 1)
+                operator = "不包含"
             elif "包含" in item:
                 column, value = item.split("包含", 1)
                 operator = "包含"
