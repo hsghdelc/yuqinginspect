@@ -43,7 +43,7 @@ class ReviewTool(BaseTk):
         header.columnconfigure(0, weight=1)
         ttk.Label(
             header,
-            text="南方分中心秒享平台舆情工单辅助审核工具",
+            text="南方分中心舆情质检辅助工具",
             font=("Microsoft YaHei UI", 15, "bold"),
         ).grid(row=0, column=0, sticky="w")
         ttk.Button(header, text="专项配置", command=self.open_special_config).grid(row=0, column=1, padx=(10, 0))
