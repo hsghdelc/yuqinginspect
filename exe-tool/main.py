@@ -87,10 +87,13 @@ class ReviewTool(tk.Tk):
 
     def _run_worker(self, input_path, output_dir):
         try:
-            result = process_file(input_path, output_dir, self.inspector.get())
+            result = process_file(input_path, output_dir, self.inspector.get(), progress_callback=self._thread_log)
             self.after(0, self._run_success, result)
         except Exception as exc:
             self.after(0, self._run_failed, exc)
+
+    def _thread_log(self, text):
+        self.after(0, self._log, text)
 
     def _run_success(self, result):
         self.run_button.config(state="normal")

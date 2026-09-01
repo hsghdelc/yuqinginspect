@@ -48,6 +48,7 @@ python3 cli.py 舆情质检明细.xlsx -o 输出目录 -i 质检人员
 - `companies`：H 列公司筛选名单。
 - `special_target_columns`：月度专项关键词匹配的列号，默认 `[3, 11]`，对应 C 列和 K 列。
 - `overtime_threshold_minutes`：超时阈值，默认 20 分钟。
+- `preserve_cell_styles`：是否逐格保留源表样式，默认 `false`，大表处理更快。
 
 ## Windows 打包
 

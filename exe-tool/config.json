@@ -16,5 +16,6 @@
     "国网冀北电力"
   ],
   "special_target_columns": [3, 11],
-  "overtime_threshold_minutes": 20
+  "overtime_threshold_minutes": 20,
+  "preserve_cell_styles": false
 }
