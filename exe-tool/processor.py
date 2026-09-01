@@ -17,6 +17,44 @@ COMPANIES = {
 }
 
 
+DEFAULT_SCHEME_ID = "default"
+
+DEFAULT_SCHEME = {
+    "id": DEFAULT_SCHEME_ID,
+    "name": "默认宏结构方案",
+    "fields": {
+        "keep": "AG",
+        "company": "H",
+        "send_time": "A",
+        "process_time": "AB",
+        "event_nature": "O",
+        "valid_scope": "R",
+        "marketing": "S",
+        "reminder": "T",
+        "duplicate": "U",
+        "event_category": "Y",
+        "id": "B",
+        "special_targets": ["C", "K"],
+    },
+    "values": {
+        "company_names": sorted(COMPANIES),
+        "valid_yes": "是",
+        "valid_no": "否",
+        "marketing_yes": "是",
+        "marketing_no": "否",
+        "duplicate_yes": "是",
+        "duplicate_no": "否",
+        "negative_event": "负面事件",
+        "positive_event": "正面事件",
+        "reminder": "舆情提醒",
+        "livelihood_event": "民生类舆情",
+    },
+    "invalid_sample_rate": 0.2,
+    "invalid_sample_min": 1,
+    "overtime_threshold_minutes": 20,
+}
+
+
 def _app_dir():
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
@@ -31,12 +69,15 @@ def load_config(config_path=None):
         "overtime_threshold_minutes": 20,
         "preserve_cell_styles": False,
         "monthly_special_plans": get_default_monthly_plans(),
+        "active_scheme_id": DEFAULT_SCHEME_ID,
+        "schemes": {DEFAULT_SCHEME_ID: DEFAULT_SCHEME},
     }
     if not path.exists():
         return default
     with path.open("r", encoding="utf-8") as f:
         loaded = json.load(f)
     default.update({k: v for k, v in loaded.items() if v is not None})
+    default["schemes"] = _normalize_schemes(default)
     return default
 
 
@@ -44,6 +85,34 @@ def save_config(config, config_path=None):
     path = Path(config_path) if config_path else _app_dir() / "config.json"
     with path.open("w", encoding="utf-8") as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
+
+
+def _normalize_schemes(config):
+    schemes = copy_json(config.get("schemes")) if config.get("schemes") else {}
+    if not isinstance(schemes, dict):
+        schemes = {}
+    if DEFAULT_SCHEME_ID not in schemes:
+        schemes[DEFAULT_SCHEME_ID] = copy_json(DEFAULT_SCHEME)
+    for scheme_id, scheme in list(schemes.items()):
+        merged = copy_json(DEFAULT_SCHEME)
+        merged.update(scheme or {})
+        merged["id"] = scheme_id
+        merged["fields"] = {**DEFAULT_SCHEME["fields"], **((scheme or {}).get("fields") or {})}
+        merged["values"] = {**DEFAULT_SCHEME["values"], **((scheme or {}).get("values") or {})}
+        schemes[scheme_id] = merged
+    return schemes
+
+
+def copy_json(value):
+    return json.loads(json.dumps(value, ensure_ascii=False))
+
+
+def get_active_scheme(config, scheme_id=None):
+    schemes = _normalize_schemes(config)
+    selected_id = scheme_id or config.get("active_scheme_id") or DEFAULT_SCHEME_ID
+    if selected_id not in schemes:
+        selected_id = DEFAULT_SCHEME_ID
+    return schemes[selected_id]
 
 
 def _cell_text(value):
@@ -61,6 +130,53 @@ def _find_col(headers, contains, default_index):
         if contains in _cell_text(value):
             return idx
     return default_index
+
+
+def _letters_to_col(text):
+    value = 0
+    for ch in text.upper():
+        if not ("A" <= ch <= "Z"):
+            return None
+        value = value * 26 + ord(ch) - ord("A") + 1
+    return value or None
+
+
+def _resolve_col(spec, headers, default_index):
+    if spec is None or spec == "":
+        return default_index
+    text = str(spec).strip()
+    if not text:
+        return default_index
+    first_token = text.split()[0] if text.split() else text
+    token_letter_col = _letters_to_col(first_token)
+    if token_letter_col:
+        return token_letter_col
+    if text.isdigit():
+        return int(text)
+    letter_col = _letters_to_col(text)
+    if letter_col:
+        return letter_col
+    for idx, value in enumerate(headers, start=1):
+        if _cell_text(value) == text:
+            return idx
+    for idx, value in enumerate(headers, start=1):
+        if text in _cell_text(value):
+            return idx
+    return default_index
+
+
+def _resolve_cols(specs, headers, default_indexes):
+    if isinstance(specs, str):
+        specs = [item.strip() for item in specs.replace("，", ",").replace("、", ",").split(",") if item.strip()]
+    if not specs:
+        return default_indexes
+    columns = []
+    for idx, spec in enumerate(specs):
+        default_index = default_indexes[min(idx, len(default_indexes) - 1)]
+        col = _resolve_col(spec, headers, default_index)
+        if col > 0 and col not in columns:
+            columns.append(col)
+    return columns or default_indexes
 
 
 def _row_value(row, col):
@@ -124,7 +240,7 @@ def _countifs(rows, pairs):
     return sum(1 for row in rows if all(_row_text(row, col) == value for col, value in pairs))
 
 
-def process_file(input_path, output_dir=None, inspector="未命名质检员", run_date=None, config_path=None, progress_callback=None):
+def process_file(input_path, output_dir=None, inspector="未命名质检员", run_date=None, config_path=None, progress_callback=None, scheme_id=None):
     def progress(message):
         if progress_callback:
             progress_callback(message)
@@ -134,9 +250,13 @@ def process_file(input_path, output_dir=None, inspector="未命名质检员", ru
     run_date = run_date or datetime.now()
     inspector = inspector.strip() or "未命名质检员"
     config = load_config(config_path)
-    companies = set(config.get("companies") or COMPANIES)
-    special_target_columns = [int(col) for col in config.get("special_target_columns", [3, 11]) if int(col) > 0]
-    overtime_threshold = float(config.get("overtime_threshold_minutes", 20) or 20)
+    scheme = get_active_scheme(config, scheme_id)
+    fields = scheme.get("fields") or DEFAULT_SCHEME["fields"]
+    values = scheme.get("values") or DEFAULT_SCHEME["values"]
+    companies = set(values.get("company_names") or config.get("companies") or COMPANIES)
+    overtime_threshold = float(scheme.get("overtime_threshold_minutes") or config.get("overtime_threshold_minutes", 20) or 20)
+    invalid_sample_rate = float(scheme.get("invalid_sample_rate", 0.2) or 0.2)
+    invalid_sample_min = int(scheme.get("invalid_sample_min", 1) or 1)
 
     progress("读取 Excel 文件...")
     wb = load_workbook(input_path, read_only=True, data_only=False)
@@ -151,26 +271,35 @@ def process_file(input_path, output_dir=None, inspector="未命名质检员", ru
     except StopIteration:
         raise ValueError("源文件没有可处理的数据")
 
+    headers = list(header)
+    col_keep = _resolve_col(fields.get("keep"), headers, 33)
+    col_company = _resolve_col(fields.get("company"), headers, 8)
+    col_send = _resolve_col(fields.get("send_time"), headers, _find_col(headers, "工单派发时间", 1))
+    col_process = _resolve_col(fields.get("process_time"), headers, _find_col(headers, "客服部处理时间", 28))
+    col_event_nature = _resolve_col(fields.get("event_nature"), headers, 15)
+    col_r = _resolve_col(fields.get("valid_scope"), headers, _find_col(headers, "是否符合舆情范围", 18))
+    col_s = _resolve_col(fields.get("marketing"), headers, _find_col(headers, "是否营销类舆情事件", 19))
+    col_reminder = _resolve_col(fields.get("reminder"), headers, 20)
+    col_u = _resolve_col(fields.get("duplicate"), headers, _find_col(headers, "是否为重复事件", 21))
+    col_category = _resolve_col(fields.get("event_category"), headers, 25)
+    col_id = _resolve_col(fields.get("id"), headers, _find_col(headers, "编号", 2))
+    special_target_columns = _resolve_cols(fields.get("special_targets") or config.get("special_target_columns"), headers, [3, 11])
+
+    progress(f"当前方案：{scheme.get('name', DEFAULT_SCHEME['name'])}")
+    progress(f"专项匹配列：{', '.join(get_column_letter(col) for col in special_target_columns)}")
+
     filtered_rows = []
     scanned_count = 0
     ag_count = 0
     for row in source_rows:
         scanned_count += 1
-        if not _row_text(row, 33):
+        if not _row_text(row, col_keep):
             continue
         ag_count += 1
-        if _row_text(row, 8) in companies:
+        if _row_text(row, col_company) in companies:
             filtered_rows.append(tuple(row))
     wb.close()
     progress(f"AG 列非空：{ag_count} 行；公司筛选后保留：{len(filtered_rows)} 行")
-
-    headers = list(header)
-    col_send = _find_col(headers, "工单派发时间", 1)
-    col_process = _find_col(headers, "客服部处理时间", 28)
-    col_r = _find_col(headers, "是否符合舆情范围", 18)
-    col_s = _find_col(headers, "是否营销类舆情事件", 19)
-    col_u = _find_col(headers, "是否为重复事件", 21)
-    col_id = _find_col(headers, "编号", 2)
 
     duration_col = max_col + 1
     header = _set_row_value(header, duration_col, "处理时长(分钟)")
@@ -179,9 +308,9 @@ def process_file(input_path, output_dir=None, inspector="未命名质检员", ru
     processed_rows = []
     for row in filtered_rows:
         if (
-            _row_text(row, col_r) == "是"
-            and _row_text(row, col_s) == "是"
-            and _row_text(row, col_u) == "否"
+            _row_text(row, col_r) == values.get("valid_yes", "是")
+            and _row_text(row, col_s) == values.get("marketing_yes", "是")
+            and _row_text(row, col_u) == values.get("duplicate_no", "否")
         ):
             send_time = _parse_datetime(_row_value(row, col_send))
             process_time = _parse_datetime(_row_value(row, col_process))
@@ -207,23 +336,23 @@ def process_file(input_path, output_dir=None, inspector="未命名质检员", ru
     progress(f"月度专项命中：{len(special_rows)} 行")
 
     progress("生成舆情提醒和无效复核数据...")
-    reminder_rows = [row for row in processed_rows if _row_text(row, 20) == "舆情提醒"]
-    invalid_source_rows = [row for row in processed_rows if _row_text(row, 18) == "否"]
+    reminder_rows = [row for row in processed_rows if _row_text(row, col_reminder) == values.get("reminder", "舆情提醒")]
+    invalid_source_rows = [row for row in processed_rows if _row_text(row, col_r) == values.get("valid_no", "否")]
     if invalid_source_rows:
-        keep_count = max(1, int((len(invalid_source_rows) * 0.2) + 0.999999))
+        keep_count = max(invalid_sample_min, int((len(invalid_source_rows) * invalid_sample_rate) + 0.999999))
         invalid_rows = random.sample(invalid_source_rows, min(keep_count, len(invalid_source_rows)))
     else:
         invalid_rows = []
 
     progress("生成日报送文本...")
     a = sum(1 for row in processed_rows if _row_text(row, 1))
-    b = _count(processed_rows, 18, "否")
-    c = _count(processed_rows, 15, "正面事件")
-    d = _countifs(processed_rows, [(15, "负面事件"), (19, "否")])
-    e = _countifs(processed_rows, [(19, "是"), (18, "是")])
-    f = _countifs(processed_rows, [(19, "是"), (18, "是"), (21, "是")])
-    g = _count(processed_rows, 20, "舆情提醒")
-    h = _countifs(processed_rows, [(25, "民生类舆情"), (18, "是"), (19, "是")])
+    b = _count(processed_rows, col_r, values.get("valid_no", "否"))
+    c = _count(processed_rows, col_event_nature, values.get("positive_event", "正面事件"))
+    d = _countifs(processed_rows, [(col_event_nature, values.get("negative_event", "负面事件")), (col_s, values.get("marketing_no", "否"))])
+    e = _countifs(processed_rows, [(col_s, values.get("marketing_yes", "是")), (col_r, values.get("valid_yes", "是"))])
+    f = _countifs(processed_rows, [(col_s, values.get("marketing_yes", "是")), (col_r, values.get("valid_yes", "是")), (col_u, values.get("duplicate_yes", "是"))])
+    g = _count(processed_rows, col_reminder, values.get("reminder", "舆情提醒"))
+    h = _countifs(processed_rows, [(col_category, values.get("livelihood_event", "民生类舆情")), (col_r, values.get("valid_yes", "是")), (col_s, values.get("marketing_yes", "是"))])
 
     report_text = (
         f"{run_date.year}年{run_date.month}月{run_date.day}日，南方分中心共收到舆情工单待办{a}件，"
