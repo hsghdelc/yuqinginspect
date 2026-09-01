@@ -233,32 +233,32 @@ class ReviewTool(BaseTk):
 
 
 class SchemeConfigWindow(tk.Toplevel):
-    FIELD_LABELS = [
-        ("keep", "基础保留列", "AG"),
-        ("company", "公司筛选列", "H"),
-        ("send_time", "工单派发时间列", "A"),
-        ("process_time", "客服部处理时间列", "AB"),
-        ("event_nature", "事件性质列", "O"),
-        ("valid_scope", "是否符合舆情范围列", "R"),
-        ("marketing", "是否营销类舆情事件列", "S"),
-        ("reminder", "舆情提醒标识列", "T"),
-        ("duplicate", "是否重复事件列", "U"),
-        ("event_category", "事件分类列", "Y"),
-        ("id", "编号列", "B"),
-        ("special_targets", "专项关键词匹配列", "C,K"),
+    FIELD_OPTIONS = [
+        ("keep", "基础保留"),
+        ("company", "公司筛选"),
+        ("send_time", "派发时间"),
+        ("process_time", "处理时间"),
+        ("event_nature", "事件性质"),
+        ("valid_scope", "舆情范围"),
+        ("marketing", "营销类"),
+        ("reminder", "舆情提醒"),
+        ("duplicate", "重复事件"),
+        ("event_category", "事件分类"),
+        ("id", "编号"),
+        ("special_targets", "专项关键词匹配"),
     ]
 
-    VALUE_LABELS = [
-        ("valid_yes", "符合舆情范围：是"),
-        ("valid_no", "符合舆情范围：否"),
-        ("marketing_yes", "营销类：是"),
-        ("marketing_no", "营销类：否"),
-        ("duplicate_yes", "重复事件：是"),
-        ("duplicate_no", "重复事件：否"),
-        ("negative_event", "负面事件值"),
-        ("positive_event", "正面事件值"),
-        ("reminder", "舆情提醒值"),
-        ("livelihood_event", "民生事件值"),
+    VALUE_OPTIONS = [
+        ("valid_yes", "符合舆情范围：是", "valid_scope", "是"),
+        ("valid_no", "符合舆情范围：否", "valid_scope", "否"),
+        ("marketing_yes", "营销类：是", "marketing", "是"),
+        ("marketing_no", "营销类：否", "marketing", "否"),
+        ("duplicate_yes", "重复事件：是", "duplicate", "是"),
+        ("duplicate_no", "重复事件：否", "duplicate", "否"),
+        ("negative_event", "负面事件值", "event_nature", "负面事件"),
+        ("positive_event", "正面事件值", "event_nature", "正面事件"),
+        ("reminder", "舆情提醒值", "reminder", "舆情提醒"),
+        ("livelihood_event", "民生事件值", "event_category", "民生类舆情"),
     ]
 
     def __init__(self, parent):
@@ -277,8 +277,10 @@ class SchemeConfigWindow(tk.Toplevel):
         self.sample_rate_var = tk.StringVar()
         self.sample_min_var = tk.StringVar()
         self.overtime_var = tk.StringVar()
-        self.field_vars = {}
-        self.value_vars = {}
+        self.field_row_vars = []
+        self.value_row_vars = []
+        self.field_rows_frame = None
+        self.value_rows_frame = None
 
         self._build_ui()
         self.refresh_scheme_list()
@@ -316,34 +318,62 @@ class SchemeConfigWindow(tk.Toplevel):
         values_tab = ttk.Frame(notebook, padding=(12, 12))
         company_tab = ttk.Frame(notebook, padding=(12, 12))
         notebook.add(fields_tab, text="字段映射")
-        notebook.add(values_tab, text="判断与抽样")
+        notebook.add(values_tab, text="规则与抽样")
         notebook.add(company_tab, text="公司名单")
 
         fields_tab.columnconfigure(1, weight=1)
-        for idx, (key, label, default_value) in enumerate(self.FIELD_LABELS):
-            ttk.Label(fields_tab, text=label).grid(row=idx, column=0, sticky="e", padx=(0, 10), pady=5)
-            var = tk.StringVar(value=default_value)
-            combo = ttk.Combobox(fields_tab, textvariable=var)
-            combo.grid(row=idx, column=1, sticky="ew", pady=5)
-            self.field_vars[key] = (var, combo)
-        ttk.Label(fields_tab, text="专项关键词匹配列可填多个，如 C,K 或选择表头后用逗号分隔。", foreground="#546179").grid(
-            row=len(self.FIELD_LABELS), column=1, sticky="w", pady=(6, 0)
-        )
+        fields_tab.rowconfigure(2, weight=1)
+        field_actions = ttk.Frame(fields_tab)
+        field_actions.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+        ttk.Button(field_actions, text="新增字段", command=self.add_field_row).pack(side="left")
+        ttk.Label(
+            field_actions,
+            text="用途决定程序逻辑，显示名称和列可按源表调整；专项关键词匹配列可填多个，如 C,K。",
+            foreground="#546179",
+        ).pack(side="left", padx=(10, 0))
+        field_header = ttk.Frame(fields_tab)
+        field_header.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 4))
+        field_header.columnconfigure(2, weight=1)
+        field_header.columnconfigure(3, weight=2)
+        ttk.Label(field_header, text="启用", width=4).grid(row=0, column=0, padx=(0, 6))
+        ttk.Label(field_header, text="用途", width=22).grid(row=0, column=1, padx=(0, 6))
+        ttk.Label(field_header, text="显示名称").grid(row=0, column=2, sticky="w", padx=(0, 6))
+        ttk.Label(field_header, text="匹配列 / 字段列").grid(row=0, column=3, sticky="w", padx=(0, 6))
+        self.field_rows_frame = self._make_scroll_area(fields_tab, row=2)
 
-        values_tab.columnconfigure(1, weight=1)
-        for idx, (key, label) in enumerate(self.VALUE_LABELS):
-            ttk.Label(values_tab, text=label).grid(row=idx, column=0, sticky="e", padx=(0, 10), pady=5)
-            var = tk.StringVar()
-            ttk.Entry(values_tab, textvariable=var).grid(row=idx, column=1, sticky="ew", pady=5)
-            self.value_vars[key] = var
-        base = len(self.VALUE_LABELS)
-        ttk.Separator(values_tab).grid(row=base, column=0, columnspan=2, sticky="ew", pady=10)
-        ttk.Label(values_tab, text="无效复核抽样比例").grid(row=base + 1, column=0, sticky="e", padx=(0, 10), pady=5)
-        ttk.Entry(values_tab, textvariable=self.sample_rate_var).grid(row=base + 1, column=1, sticky="ew", pady=5)
-        ttk.Label(values_tab, text="无效复核最少抽样条数").grid(row=base + 2, column=0, sticky="e", padx=(0, 10), pady=5)
-        ttk.Entry(values_tab, textvariable=self.sample_min_var).grid(row=base + 2, column=1, sticky="ew", pady=5)
-        ttk.Label(values_tab, text="超时阈值（分钟）").grid(row=base + 3, column=0, sticky="e", padx=(0, 10), pady=5)
-        ttk.Entry(values_tab, textvariable=self.overtime_var).grid(row=base + 3, column=1, sticky="ew", pady=5)
+        values_tab.columnconfigure(0, weight=1)
+        values_tab.rowconfigure(2, weight=1)
+        value_actions = ttk.Frame(values_tab)
+        value_actions.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        ttk.Button(value_actions, text="新增判断规则", command=self.add_value_row).pack(side="left")
+        ttk.Label(
+            value_actions,
+            text="规则类型决定日报统计、无效抽样和超时筛查的判断口径；列和值均可维护。",
+            foreground="#546179",
+        ).pack(side="left", padx=(10, 0))
+        value_header = ttk.Frame(values_tab)
+        value_header.grid(row=1, column=0, sticky="ew", pady=(0, 4))
+        value_header.columnconfigure(2, weight=1)
+        value_header.columnconfigure(3, weight=2)
+        value_header.columnconfigure(4, weight=1)
+        ttk.Label(value_header, text="启用", width=4).grid(row=0, column=0, padx=(0, 6))
+        ttk.Label(value_header, text="规则类型", width=24).grid(row=0, column=1, padx=(0, 6))
+        ttk.Label(value_header, text="显示名称").grid(row=0, column=2, sticky="w", padx=(0, 6))
+        ttk.Label(value_header, text="判断列").grid(row=0, column=3, sticky="w", padx=(0, 6))
+        ttk.Label(value_header, text="匹配值").grid(row=0, column=4, sticky="w", padx=(0, 6))
+        self.value_rows_frame = self._make_scroll_area(values_tab, row=2)
+
+        sampling = ttk.LabelFrame(values_tab, text="无效复核抽样与超时筛查", padding=(10, 8))
+        sampling.grid(row=3, column=0, sticky="ew", pady=(10, 0))
+        sampling.columnconfigure(1, weight=1)
+        sampling.columnconfigure(3, weight=1)
+        sampling.columnconfigure(5, weight=1)
+        ttk.Label(sampling, text="抽样比例").grid(row=0, column=0, sticky="e", padx=(0, 8))
+        ttk.Entry(sampling, textvariable=self.sample_rate_var, width=10).grid(row=0, column=1, sticky="ew")
+        ttk.Label(sampling, text="最少条数").grid(row=0, column=2, sticky="e", padx=(12, 8))
+        ttk.Entry(sampling, textvariable=self.sample_min_var, width=10).grid(row=0, column=3, sticky="ew")
+        ttk.Label(sampling, text="超时阈值(分钟)").grid(row=0, column=4, sticky="e", padx=(12, 8))
+        ttk.Entry(sampling, textvariable=self.overtime_var, width=10).grid(row=0, column=5, sticky="ew")
 
         company_tab.columnconfigure(0, weight=1)
         company_tab.rowconfigure(0, weight=1)
@@ -380,18 +410,17 @@ class SchemeConfigWindow(tk.Toplevel):
     def load_scheme(self, scheme_id):
         self.current_scheme_id = scheme_id
         scheme = self.schemes[scheme_id]
-        fields = scheme.get("fields") or {}
-        values = scheme.get("values") or {}
         self.name_var.set(scheme.get("name") or scheme_id)
-        for key, _label, default_value in self.FIELD_LABELS:
-            var, combo = self.field_vars[key]
-            value = fields.get(key, default_value)
-            if isinstance(value, list):
-                value = ",".join(str(item) for item in value)
-            var.set(str(value))
-            combo["values"] = self.header_choices
-        for key, _label in self.VALUE_LABELS:
-            self.value_vars[key].set(str(values.get(key, DEFAULT_SCHEME["values"].get(key, ""))))
+        self.field_row_vars = []
+        self.value_row_vars = []
+        for widget in self.field_rows_frame.winfo_children():
+            widget.destroy()
+        for widget in self.value_rows_frame.winfo_children():
+            widget.destroy()
+        for item in self._scheme_field_items(scheme):
+            self.add_field_row(item)
+        for item in self._scheme_value_rules(scheme):
+            self.add_value_row(item)
         self.sample_rate_var.set(str(scheme.get("invalid_sample_rate", 0.2)))
         self.sample_min_var.set(str(scheme.get("invalid_sample_min", 1)))
         self.overtime_var.set(str(scheme.get("overtime_threshold_minutes", 20)))
@@ -400,15 +429,18 @@ class SchemeConfigWindow(tk.Toplevel):
 
     def save_current_scheme(self, show_message=True):
         if not self.current_scheme_id:
-            return
+            return True
+        field_items = self._collect_field_items()
+        value_rules = self._collect_value_rules()
         fields = {}
-        for key, _label, _default_value in self.FIELD_LABELS:
-            text = self.field_vars[key][0].get().strip()
-            if key == "special_targets":
-                fields[key] = [item.strip() for item in text.replace("，", ",").replace("、", ",").split(",") if item.strip()]
+        for item in field_items:
+            if not item["enabled"]:
+                continue
+            if item["key"] == "special_targets":
+                fields[item["key"]] = [part.strip() for part in item["column"].replace("，", ",").replace("、", ",").split(",") if part.strip()]
             else:
-                fields[key] = text
-        values = {key: var.get().strip() for key, var in self.value_vars.items()}
+                fields[item["key"]] = item["column"]
+        values = {item["key"]: item["value"] for item in value_rules if item["enabled"]}
         values["company_names"] = [line.strip() for line in self.company_text.get("1.0", "end").splitlines() if line.strip()]
         try:
             sample_rate = float(self.sample_rate_var.get() or 0.2)
@@ -416,18 +448,21 @@ class SchemeConfigWindow(tk.Toplevel):
             overtime = float(self.overtime_var.get() or 20)
         except ValueError:
             messagebox.showerror("配置错误", "抽样比例、最少条数和超时阈值必须是数字。")
-            return
+            return False
         self.schemes[self.current_scheme_id] = {
             "id": self.current_scheme_id,
             "name": self.name_var.get().strip() or self.current_scheme_id,
             "fields": fields,
+            "field_items": field_items,
             "values": values,
+            "value_rules": value_rules,
             "invalid_sample_rate": sample_rate,
             "invalid_sample_min": sample_min,
             "overtime_threshold_minutes": overtime,
         }
         if show_message:
             messagebox.showinfo("已保存", "当前方案已暂存")
+        return True
 
     def add_scheme(self):
         self.save_current_scheme(show_message=False)
@@ -489,7 +524,8 @@ class SchemeConfigWindow(tk.Toplevel):
         messagebox.showinfo("已设置", "当前方案已设为默认运行方案")
 
     def save_all_and_close(self):
-        self.save_current_scheme(show_message=False)
+        if not self.save_current_scheme(show_message=False):
+            return
         self.config_data["schemes"] = self.schemes
         if not self.config_data.get("active_scheme_id"):
             self.config_data["active_scheme_id"] = self.current_scheme_id or DEFAULT_SCHEME_ID
@@ -513,9 +549,148 @@ class SchemeConfigWindow(tk.Toplevel):
         except Exception as exc:
             messagebox.showerror("读取失败", str(exc))
             return
-        for _key, combo_pair in self.field_vars.items():
-            combo_pair[1]["values"] = self.header_choices
+        self._refresh_column_choices()
         messagebox.showinfo("完成", "已读取表头，可在字段映射中选择。")
+
+    def _make_scroll_area(self, parent, row):
+        canvas = tk.Canvas(parent, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        frame = ttk.Frame(canvas)
+        frame.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas_window = canvas.create_window((0, 0), window=frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.grid(row=row, column=0, sticky="nsew")
+        scrollbar.grid(row=row, column=1, sticky="ns")
+        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(canvas_window, width=event.width))
+        return frame
+
+    def _field_display(self, key):
+        labels = dict(self.FIELD_OPTIONS)
+        return f"{key} - {labels.get(key, key)}"
+
+    def _value_display(self, key):
+        labels = {item[0]: item[1] for item in self.VALUE_OPTIONS}
+        return f"{key} - {labels.get(key, key)}"
+
+    @staticmethod
+    def _parse_key(display):
+        return str(display or "").split(" - ", 1)[0].strip()
+
+    def _column_choices(self):
+        return self.header_choices or []
+
+    def _scheme_field_items(self, scheme):
+        items = copy_json(scheme.get("field_items") or [])
+        if not items:
+            fields = scheme.get("fields") or DEFAULT_SCHEME["fields"]
+            labels = {item["key"]: item["label"] for item in DEFAULT_SCHEME["field_items"]}
+            for key, column in fields.items():
+                if isinstance(column, list):
+                    column = ",".join(str(item) for item in column)
+                items.append({"key": key, "label": labels.get(key, key), "column": str(column), "enabled": True})
+        return items or copy_json(DEFAULT_SCHEME["field_items"])
+
+    def _scheme_value_rules(self, scheme):
+        items = copy_json(scheme.get("value_rules") or [])
+        if not items:
+            values = scheme.get("values") or DEFAULT_SCHEME["values"]
+            for key, label, field_key, default_value in self.VALUE_OPTIONS:
+                items.append({
+                    "key": key,
+                    "label": label,
+                    "field_key": field_key,
+                    "column": (scheme.get("fields") or DEFAULT_SCHEME["fields"]).get(field_key, ""),
+                    "value": values.get(key, default_value),
+                    "enabled": True,
+                })
+        return items or copy_json(DEFAULT_SCHEME["value_rules"])
+
+    def add_field_row(self, item=None):
+        item = item or {"key": "custom_field", "label": "自定义字段", "column": "", "enabled": True}
+        row_index = len(self.field_row_vars)
+        row = ttk.Frame(self.field_rows_frame, padding=(0, 3))
+        row.grid(row=row_index, column=0, sticky="ew")
+        row.columnconfigure(2, weight=1)
+        row.columnconfigure(3, weight=2)
+        enabled_var = tk.BooleanVar(value=item.get("enabled", True) is not False)
+        key_var = tk.StringVar(value=self._field_display(item.get("key") or "custom_field"))
+        label_var = tk.StringVar(value=item.get("label") or item.get("key") or "")
+        column = item.get("column") or ""
+        if isinstance(column, list):
+            column = ",".join(str(part) for part in column)
+        column_var = tk.StringVar(value=str(column))
+        ttk.Checkbutton(row, variable=enabled_var).grid(row=0, column=0, padx=(0, 6))
+        ttk.Combobox(row, textvariable=key_var, values=[self._field_display(key) for key, _ in self.FIELD_OPTIONS], width=22).grid(row=0, column=1, sticky="ew", padx=(0, 6))
+        ttk.Entry(row, textvariable=label_var).grid(row=0, column=2, sticky="ew", padx=(0, 6))
+        combo = ttk.Combobox(row, textvariable=column_var, values=self._column_choices())
+        combo.grid(row=0, column=3, sticky="ew", padx=(0, 6))
+        ttk.Button(row, text="删除", command=lambda: self._delete_dynamic_row(self.field_row_vars, row)).grid(row=0, column=4)
+        self.field_row_vars.append({"frame": row, "enabled": enabled_var, "key": key_var, "label": label_var, "column": column_var, "combo": combo})
+
+    def add_value_row(self, item=None):
+        default_key, default_label, default_field_key, default_value = self.VALUE_OPTIONS[0]
+        item = item or {"key": default_key, "label": default_label, "field_key": default_field_key, "column": "", "value": default_value, "enabled": True}
+        row_index = len(self.value_row_vars)
+        row = ttk.Frame(self.value_rows_frame, padding=(0, 3))
+        row.grid(row=row_index, column=0, sticky="ew")
+        row.columnconfigure(2, weight=1)
+        row.columnconfigure(3, weight=2)
+        row.columnconfigure(4, weight=1)
+        enabled_var = tk.BooleanVar(value=item.get("enabled", True) is not False)
+        key_var = tk.StringVar(value=self._value_display(item.get("key") or default_key))
+        label_var = tk.StringVar(value=item.get("label") or item.get("key") or "")
+        column_var = tk.StringVar(value=str(item.get("column") or ""))
+        value_var = tk.StringVar(value=str(item.get("value") or ""))
+        ttk.Checkbutton(row, variable=enabled_var).grid(row=0, column=0, padx=(0, 6))
+        ttk.Combobox(row, textvariable=key_var, values=[self._value_display(key) for key, _label, _field_key, _value in self.VALUE_OPTIONS], width=24).grid(row=0, column=1, sticky="ew", padx=(0, 6))
+        ttk.Entry(row, textvariable=label_var).grid(row=0, column=2, sticky="ew", padx=(0, 6))
+        combo = ttk.Combobox(row, textvariable=column_var, values=self._column_choices())
+        combo.grid(row=0, column=3, sticky="ew", padx=(0, 6))
+        ttk.Entry(row, textvariable=value_var).grid(row=0, column=4, sticky="ew", padx=(0, 6))
+        ttk.Button(row, text="删除", command=lambda: self._delete_dynamic_row(self.value_row_vars, row)).grid(row=0, column=5)
+        self.value_row_vars.append({"frame": row, "enabled": enabled_var, "key": key_var, "label": label_var, "column": column_var, "value": value_var, "combo": combo})
+
+    def _delete_dynamic_row(self, rows, frame):
+        for idx, item in enumerate(list(rows)):
+            if item["frame"] == frame:
+                item["frame"].destroy()
+                del rows[idx]
+                break
+
+    def _refresh_column_choices(self):
+        for item in self.field_row_vars + self.value_row_vars:
+            item["combo"]["values"] = self._column_choices()
+
+    def _collect_field_items(self):
+        items = []
+        for row in self.field_row_vars:
+            key = self._parse_key(row["key"].get())
+            label = row["label"].get().strip() or key
+            column = row["column"].get().strip()
+            if not key and not column:
+                continue
+            items.append({"key": key, "label": label, "column": column, "enabled": bool(row["enabled"].get())})
+        return items
+
+    def _collect_value_rules(self):
+        field_map = {key: field_key for key, _label, field_key, _default in self.VALUE_OPTIONS}
+        items = []
+        for row in self.value_row_vars:
+            key = self._parse_key(row["key"].get())
+            label = row["label"].get().strip() or key
+            column = row["column"].get().strip()
+            value = row["value"].get().strip()
+            if not key and not value:
+                continue
+            items.append({
+                "key": key,
+                "label": label,
+                "field_key": field_map.get(key, ""),
+                "column": column,
+                "value": value,
+                "enabled": bool(row["enabled"].get()),
+            })
+        return items
 
 
 def load_config_headers(path):

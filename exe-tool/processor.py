@@ -36,6 +36,20 @@ DEFAULT_SCHEME = {
         "id": "B",
         "special_targets": ["C", "K"],
     },
+    "field_items": [
+        {"key": "keep", "label": "基础保留列", "column": "AG", "enabled": True},
+        {"key": "company", "label": "公司筛选列", "column": "H", "enabled": True},
+        {"key": "send_time", "label": "工单派发时间列", "column": "A", "enabled": True},
+        {"key": "process_time", "label": "客服部处理时间列", "column": "AB", "enabled": True},
+        {"key": "event_nature", "label": "事件性质列", "column": "O", "enabled": True},
+        {"key": "valid_scope", "label": "是否符合舆情范围列", "column": "R", "enabled": True},
+        {"key": "marketing", "label": "是否营销类舆情事件列", "column": "S", "enabled": True},
+        {"key": "reminder", "label": "舆情提醒标识列", "column": "T", "enabled": True},
+        {"key": "duplicate", "label": "是否重复事件列", "column": "U", "enabled": True},
+        {"key": "event_category", "label": "事件分类列", "column": "Y", "enabled": True},
+        {"key": "id", "label": "编号列", "column": "B", "enabled": True},
+        {"key": "special_targets", "label": "专项关键词匹配列", "column": "C,K", "enabled": True},
+    ],
     "values": {
         "company_names": sorted(COMPANIES),
         "valid_yes": "是",
@@ -49,6 +63,18 @@ DEFAULT_SCHEME = {
         "reminder": "舆情提醒",
         "livelihood_event": "民生类舆情",
     },
+    "value_rules": [
+        {"key": "valid_yes", "label": "符合舆情范围：是", "field_key": "valid_scope", "column": "R", "value": "是", "enabled": True},
+        {"key": "valid_no", "label": "符合舆情范围：否", "field_key": "valid_scope", "column": "R", "value": "否", "enabled": True},
+        {"key": "marketing_yes", "label": "营销类：是", "field_key": "marketing", "column": "S", "value": "是", "enabled": True},
+        {"key": "marketing_no", "label": "营销类：否", "field_key": "marketing", "column": "S", "value": "否", "enabled": True},
+        {"key": "duplicate_yes", "label": "重复事件：是", "field_key": "duplicate", "column": "U", "value": "是", "enabled": True},
+        {"key": "duplicate_no", "label": "重复事件：否", "field_key": "duplicate", "column": "U", "value": "否", "enabled": True},
+        {"key": "negative_event", "label": "负面事件值", "field_key": "event_nature", "column": "O", "value": "负面事件", "enabled": True},
+        {"key": "positive_event", "label": "正面事件值", "field_key": "event_nature", "column": "O", "value": "正面事件", "enabled": True},
+        {"key": "reminder", "label": "舆情提醒值", "field_key": "reminder", "column": "T", "value": "舆情提醒", "enabled": True},
+        {"key": "livelihood_event", "label": "民生事件值", "field_key": "event_category", "column": "Y", "value": "民生类舆情", "enabled": True},
+    ],
     "invalid_sample_rate": 0.2,
     "invalid_sample_min": 1,
     "overtime_threshold_minutes": 20,
@@ -99,8 +125,104 @@ def _normalize_schemes(config):
         merged["id"] = scheme_id
         merged["fields"] = {**DEFAULT_SCHEME["fields"], **((scheme or {}).get("fields") or {})}
         merged["values"] = {**DEFAULT_SCHEME["values"], **((scheme or {}).get("values") or {})}
+        merged["field_items"] = _normalize_field_items(merged)
+        merged["value_rules"] = _normalize_value_rules(merged)
         schemes[scheme_id] = merged
     return schemes
+
+
+def _normalize_field_items(scheme):
+    field_items = scheme.get("field_items")
+    if not isinstance(field_items, list) or not field_items:
+        field_items = []
+        fields = scheme.get("fields") or {}
+        labels = {item["key"]: item["label"] for item in DEFAULT_SCHEME["field_items"]}
+        for key, column in fields.items():
+            if isinstance(column, list):
+                column = ",".join(str(item) for item in column)
+            field_items.append({
+                "key": key,
+                "label": labels.get(key, key),
+                "column": str(column),
+                "enabled": True,
+            })
+    known = {item.get("key"): item for item in field_items if isinstance(item, dict)}
+    for default_item in DEFAULT_SCHEME["field_items"]:
+        if default_item["key"] not in known:
+            field_items.append(copy_json(default_item))
+    return [
+        {
+            "key": str(item.get("key") or "").strip(),
+            "label": str(item.get("label") or item.get("key") or "").strip(),
+            "column": str(item.get("column") or "").strip(),
+            "enabled": item.get("enabled", True) is not False,
+        }
+        for item in field_items
+        if isinstance(item, dict) and str(item.get("key") or "").strip()
+    ]
+
+
+def _normalize_value_rules(scheme):
+    value_rules = scheme.get("value_rules")
+    if not isinstance(value_rules, list) or not value_rules:
+        value_rules = []
+        values = scheme.get("values") or {}
+        fields = _fields_from_items(scheme.get("field_items") or DEFAULT_SCHEME["field_items"])
+        defaults = {item["key"]: item for item in DEFAULT_SCHEME["value_rules"]}
+        for key, default_rule in defaults.items():
+            rule = copy_json(default_rule)
+            rule["value"] = values.get(key, default_rule["value"])
+            rule["column"] = fields.get(default_rule["field_key"], default_rule["column"])
+            value_rules.append(rule)
+    known = {item.get("key"): item for item in value_rules if isinstance(item, dict)}
+    for default_rule in DEFAULT_SCHEME["value_rules"]:
+        if default_rule["key"] not in known:
+            value_rules.append(copy_json(default_rule))
+    return [
+        {
+            "key": str(item.get("key") or "").strip(),
+            "label": str(item.get("label") or item.get("key") or "").strip(),
+            "field_key": str(item.get("field_key") or "").strip(),
+            "column": str(item.get("column") or "").strip(),
+            "value": str(item.get("value") or "").strip(),
+            "enabled": item.get("enabled", True) is not False,
+        }
+        for item in value_rules
+        if isinstance(item, dict) and str(item.get("key") or "").strip()
+    ]
+
+
+def _fields_from_items(field_items):
+    fields = {}
+    for item in field_items or []:
+        if not isinstance(item, dict) or item.get("enabled", True) is False:
+            continue
+        key = str(item.get("key") or "").strip()
+        column = str(item.get("column") or "").strip()
+        if not key or not column:
+            continue
+        if key == "special_targets":
+            fields[key] = [part.strip() for part in column.replace("，", ",").replace("、", ",").split(",") if part.strip()]
+        else:
+            fields[key] = column
+    return fields
+
+
+def _values_from_rules(value_rules):
+    values = {}
+    field_overrides = {}
+    for rule in value_rules or []:
+        if not isinstance(rule, dict) or rule.get("enabled", True) is False:
+            continue
+        key = str(rule.get("key") or "").strip()
+        if not key:
+            continue
+        values[key] = str(rule.get("value") or "").strip()
+        field_key = str(rule.get("field_key") or "").strip()
+        column = str(rule.get("column") or "").strip()
+        if field_key and column:
+            field_overrides[field_key] = column
+    return values, field_overrides
 
 
 def copy_json(value):
@@ -251,8 +373,10 @@ def process_file(input_path, output_dir=None, inspector="未命名质检员", ru
     inspector = inspector.strip() or "未命名质检员"
     config = load_config(config_path)
     scheme = get_active_scheme(config, scheme_id)
-    fields = scheme.get("fields") or DEFAULT_SCHEME["fields"]
-    values = scheme.get("values") or DEFAULT_SCHEME["values"]
+    fields = {**(scheme.get("fields") or DEFAULT_SCHEME["fields"]), **_fields_from_items(scheme.get("field_items"))}
+    rule_values, field_overrides = _values_from_rules(scheme.get("value_rules"))
+    fields.update({key: value for key, value in field_overrides.items() if value})
+    values = {**(scheme.get("values") or DEFAULT_SCHEME["values"]), **rule_values}
     companies = set(values.get("company_names") or config.get("companies") or COMPANIES)
     overtime_threshold = float(scheme.get("overtime_threshold_minutes") or config.get("overtime_threshold_minutes", 20) or 20)
     invalid_sample_rate = float(scheme.get("invalid_sample_rate", 0.2) or 0.2)
