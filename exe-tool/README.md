@@ -15,6 +15,8 @@
 - 添加质检人员、质检结果、补录单号。
 - 生成日报送文本。
 - 导出最终质检明细 Excel。
+- 支持在界面中配置 1-12 月专项质检策略和关键词。
+- 支持复制日报送内容；运行环境支持时可拖入 Excel 文件。
 
 ## 目录说明
 
@@ -49,6 +51,7 @@ python3 cli.py 舆情质检明细.xlsx -o 输出目录 -i 质检人员
 - `special_target_columns`：月度专项关键词匹配的列号，默认 `[3, 11]`，对应 C 列和 K 列。
 - `overtime_threshold_minutes`：超时阈值，默认 20 分钟。
 - `preserve_cell_styles`：是否逐格保留源表样式，默认 `false`，大表处理更快。
+- `monthly_special_plans`：界面保存后的 1-12 月专项质检策略和关键词配置。
 
 ## Windows 打包
 

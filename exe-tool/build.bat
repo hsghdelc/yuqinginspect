@@ -8,6 +8,7 @@ python -m PyInstaller ^
   --clean ^
   --windowed ^
   --add-data "config.json;." ^
+  --collect-data tkinterdnd2 ^
   --name "南方分中心舆情质检辅助工具" ^
   main.py
 

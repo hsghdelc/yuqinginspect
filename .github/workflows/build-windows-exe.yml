@@ -32,7 +32,7 @@ jobs:
       - name: Build exe
         working-directory: exe-tool
         run: |
-          python -m PyInstaller --noconfirm --clean --windowed --add-data "config.json;." --name "南方分中心舆情质检辅助工具" main.py
+          python -m PyInstaller --noconfirm --clean --windowed --add-data "config.json;." --collect-data tkinterdnd2 --name "南方分中心舆情质检辅助工具" main.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

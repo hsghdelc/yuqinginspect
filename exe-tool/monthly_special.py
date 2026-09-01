@@ -127,5 +127,27 @@ MONTHLY_SPECIAL_PLANS = {
 }
 
 
-def get_monthly_plan(month):
+def get_default_monthly_plans():
+    return {
+        str(month): {
+            "name": plan["name"],
+            "strategy": plan["strategy"],
+            "keywords": list(plan["keywords"]),
+        }
+        for month, plan in MONTHLY_SPECIAL_PLANS.items()
+    }
+
+
+def get_monthly_plan(month, custom_plans=None):
+    month_key = str(int(month))
+    if custom_plans and month_key in custom_plans:
+        plan = custom_plans[month_key]
+        keywords = plan.get("keywords") or []
+        if isinstance(keywords, str):
+            keywords = [item.strip() for item in keywords.replace("，", ",").split(",") if item.strip()]
+        return {
+            "name": plan.get("name") or MONTHLY_SPECIAL_PLANS[int(month)]["name"],
+            "strategy": plan.get("strategy") or MONTHLY_SPECIAL_PLANS[int(month)]["strategy"],
+            "keywords": keywords,
+        }
     return MONTHLY_SPECIAL_PLANS.get(int(month), MONTHLY_SPECIAL_PLANS[12])

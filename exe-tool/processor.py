@@ -7,7 +7,7 @@ from pathlib import Path
 from openpyxl import Workbook, load_workbook
 from openpyxl.utils import get_column_letter
 
-from monthly_special import get_monthly_plan
+from monthly_special import get_default_monthly_plans, get_monthly_plan
 
 
 COMPANIES = {
@@ -30,6 +30,7 @@ def load_config(config_path=None):
         "special_target_columns": [3, 11],
         "overtime_threshold_minutes": 20,
         "preserve_cell_styles": False,
+        "monthly_special_plans": get_default_monthly_plans(),
     }
     if not path.exists():
         return default
@@ -37,6 +38,12 @@ def load_config(config_path=None):
         loaded = json.load(f)
     default.update({k: v for k, v in loaded.items() if v is not None})
     return default
+
+
+def save_config(config, config_path=None):
+    path = Path(config_path) if config_path else _app_dir() / "config.json"
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(config, f, ensure_ascii=False, indent=2)
 
 
 def _cell_text(value):
@@ -187,7 +194,7 @@ def process_file(input_path, output_dir=None, inspector="未命名质检员", ru
                 row = _set_row_value(row, duration_col, "时间格式错误")
         processed_rows.append(row)
 
-    month_plan = get_monthly_plan(run_date.month)
+    month_plan = get_monthly_plan(run_date.month, config.get("monthly_special_plans"))
     special_sheet_name = _safe_sheet_name(month_plan["name"] + "复核")
     keywords = [kw.lower() for kw in month_plan["keywords"]]
 
