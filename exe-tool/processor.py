@@ -75,6 +75,68 @@ DEFAULT_SCHEME = {
         {"key": "reminder", "label": "舆情提醒值", "field_key": "reminder", "column": "T", "value": "舆情提醒", "enabled": True},
         {"key": "livelihood_event", "label": "民生事件值", "field_key": "event_category", "column": "Y", "value": "民生类舆情", "enabled": True},
     ],
+    "review_plans": [
+        {
+            "name": "月度专项质检",
+            "role": "monthly_special",
+            "enabled": True,
+            "output_sheet": True,
+            "match_type": "按月份专项关键词",
+            "keyword_columns": "C,K",
+            "keywords": "",
+            "match_mode": "包含",
+            "case_sensitive": False,
+            "conditions": [],
+            "sampling": {"enabled": False, "mode": "按比例", "value": 0.2, "min_count": 1},
+            "overtime": {"enabled": False, "send_column": "A", "process_column": "AB", "threshold_minutes": 20, "id_column": "B"},
+        },
+        {
+            "name": "无效复核",
+            "role": "invalid_review",
+            "enabled": True,
+            "output_sheet": True,
+            "match_type": "条件筛选",
+            "keyword_columns": "",
+            "keywords": "",
+            "match_mode": "包含",
+            "case_sensitive": False,
+            "conditions": [{"column": "R", "operator": "等于", "value": "否"}],
+            "sampling": {"enabled": True, "mode": "按比例", "value": 0.2, "min_count": 1},
+            "overtime": {"enabled": False, "send_column": "A", "process_column": "AB", "threshold_minutes": 20, "id_column": "B"},
+        },
+        {
+            "name": "舆情提醒复核",
+            "role": "reminder_review",
+            "enabled": True,
+            "output_sheet": True,
+            "match_type": "条件筛选",
+            "keyword_columns": "",
+            "keywords": "",
+            "match_mode": "包含",
+            "case_sensitive": False,
+            "conditions": [{"column": "T", "operator": "等于", "value": "舆情提醒"}],
+            "sampling": {"enabled": False, "mode": "按比例", "value": 0.2, "min_count": 1},
+            "overtime": {"enabled": False, "send_column": "A", "process_column": "AB", "threshold_minutes": 20, "id_column": "B"},
+        },
+        {
+            "name": "超时检查",
+            "role": "overtime_check",
+            "enabled": True,
+            "output_sheet": False,
+            "match_type": "条件筛选",
+            "keyword_columns": "",
+            "keywords": "",
+            "match_mode": "包含",
+            "case_sensitive": False,
+            "conditions": [
+                {"column": "R", "operator": "等于", "value": "是"},
+                {"column": "S", "operator": "等于", "value": "是"},
+                {"column": "U", "operator": "等于", "value": "否"},
+            ],
+            "sampling": {"enabled": False, "mode": "按比例", "value": 0.2, "min_count": 1},
+            "overtime": {"enabled": True, "send_column": "A", "process_column": "AB", "threshold_minutes": 20, "id_column": "B"},
+        },
+    ],
     "invalid_sample_rate": 0.2,
     "invalid_sample_min": 1,
     "overtime_threshold_minutes": 20,
@@ -127,6 +189,7 @@ def _normalize_schemes(config):
         merged["values"] = {**DEFAULT_SCHEME["values"], **((scheme or {}).get("values") or {})}
         merged["field_items"] = _normalize_field_items(merged)
         merged["value_rules"] = _normalize_value_rules(merged)
+        merged["review_plans"] = _normalize_review_plans(merged)
         schemes[scheme_id] = merged
     return schemes
 
@@ -223,6 +286,81 @@ def _values_from_rules(value_rules):
         if field_key and column:
             field_overrides[field_key] = column
     return values, field_overrides
+
+
+def _normalize_review_plans(scheme):
+    plans = scheme.get("review_plans")
+    if isinstance(plans, list) and plans:
+        return [_normalize_review_plan(plan) for plan in plans if isinstance(plan, dict)]
+    fields = {**DEFAULT_SCHEME["fields"], **(scheme.get("fields") or {}), **_fields_from_items(scheme.get("field_items"))}
+    values = {**DEFAULT_SCHEME["values"], **(scheme.get("values") or {})}
+    defaults = copy_json(DEFAULT_SCHEME["review_plans"])
+    for plan in defaults:
+        if plan.get("role") == "monthly_special":
+            columns = fields.get("special_targets") or ["C", "K"]
+            plan["keyword_columns"] = ",".join(columns) if isinstance(columns, list) else str(columns)
+        elif plan.get("role") == "invalid_review":
+            plan["conditions"] = [{"column": fields.get("valid_scope", "R"), "operator": "等于", "value": values.get("valid_no", "否")}]
+            plan["sampling"] = {
+                "enabled": True,
+                "mode": "按比例",
+                "value": float(scheme.get("invalid_sample_rate", 0.2) or 0.2),
+                "min_count": int(scheme.get("invalid_sample_min", 1) or 1),
+            }
+        elif plan.get("role") == "reminder_review":
+            plan["conditions"] = [{"column": fields.get("reminder", "T"), "operator": "等于", "value": values.get("reminder", "舆情提醒")}]
+        elif plan.get("role") == "overtime_check":
+            plan["conditions"] = [
+                {"column": fields.get("valid_scope", "R"), "operator": "等于", "value": values.get("valid_yes", "是")},
+                {"column": fields.get("marketing", "S"), "operator": "等于", "value": values.get("marketing_yes", "是")},
+                {"column": fields.get("duplicate", "U"), "operator": "等于", "value": values.get("duplicate_no", "否")},
+            ]
+            plan["overtime"] = {
+                "enabled": True,
+                "send_column": fields.get("send_time", "A"),
+                "process_column": fields.get("process_time", "AB"),
+                "threshold_minutes": float(scheme.get("overtime_threshold_minutes", 20) or 20),
+                "id_column": fields.get("id", "B"),
+            }
+    return [_normalize_review_plan(plan) for plan in defaults]
+
+
+def _normalize_review_plan(plan):
+    sampling = plan.get("sampling") if isinstance(plan.get("sampling"), dict) else {}
+    overtime = plan.get("overtime") if isinstance(plan.get("overtime"), dict) else {}
+    return {
+        "name": str(plan.get("name") or "质检计划").strip(),
+        "role": str(plan.get("role") or "").strip(),
+        "enabled": plan.get("enabled", True) is not False,
+        "output_sheet": plan.get("output_sheet", True) is not False,
+        "match_type": str(plan.get("match_type") or "条件筛选").strip(),
+        "keyword_columns": plan.get("keyword_columns") or "",
+        "keywords": str(plan.get("keywords") or ""),
+        "match_mode": str(plan.get("match_mode") or "包含").strip(),
+        "case_sensitive": bool(plan.get("case_sensitive", False)),
+        "conditions": [
+            {
+                "column": str(cond.get("column") or "").strip(),
+                "operator": str(cond.get("operator") or "等于").strip(),
+                "value": str(cond.get("value") or "").strip(),
+            }
+            for cond in (plan.get("conditions") or [])
+            if isinstance(cond, dict)
+        ],
+        "sampling": {
+            "enabled": sampling.get("enabled", False) is True,
+            "mode": str(sampling.get("mode") or "按比例").strip(),
+            "value": sampling.get("value", 0.2),
+            "min_count": sampling.get("min_count", 1),
+        },
+        "overtime": {
+            "enabled": overtime.get("enabled", False) is True,
+            "send_column": str(overtime.get("send_column") or "A").strip(),
+            "process_column": str(overtime.get("process_column") or "AB").strip(),
+            "threshold_minutes": overtime.get("threshold_minutes", 20),
+            "id_column": str(overtime.get("id_column") or "B").strip(),
+        },
+    }
 
 
 def copy_json(value):
@@ -362,6 +500,100 @@ def _countifs(rows, pairs):
     return sum(1 for row in rows if all(_row_text(row, col) == value for col, value in pairs))
 
 
+def _split_items(text):
+    if isinstance(text, list):
+        return [str(item).strip() for item in text if str(item).strip()]
+    return [item.strip() for item in str(text or "").replace("，", ",").replace("、", ",").replace("\n", ",").split(",") if item.strip()]
+
+
+def _match_text(value, expected, operator):
+    actual = _cell_text(value)
+    expected = str(expected or "").strip()
+    if operator == "包含":
+        return expected in actual
+    if operator == "不包含":
+        return expected not in actual
+    if operator == "不等于":
+        return actual != expected
+    if operator == "为空":
+        return actual == ""
+    if operator == "非空":
+        return actual != ""
+    return actual == expected
+
+
+def _match_conditions(row, conditions, headers):
+    if not conditions:
+        return True
+    for condition in conditions:
+        col = _resolve_col(condition.get("column"), headers, 1)
+        if not _match_text(_row_value(row, col), condition.get("value"), condition.get("operator", "等于")):
+            return False
+    return True
+
+
+def _match_keywords(row, plan, headers, month_plan=None):
+    columns = _resolve_cols(plan.get("keyword_columns"), headers, [3, 11])
+    source_keywords = month_plan.get("keywords") if month_plan else plan.get("keywords")
+    keywords = _split_items(source_keywords)
+    if not keywords:
+        return False
+    text = " ".join(_row_text(row, col) for col in columns)
+    if not plan.get("case_sensitive", False):
+        text = text.lower()
+        keywords = [keyword.lower() for keyword in keywords]
+    if plan.get("match_mode") == "等于":
+        return any(text == keyword for keyword in keywords)
+    return any(keyword in text for keyword in keywords)
+
+
+def _run_review_plan(rows, plan, headers, month_plan=None):
+    match_type = plan.get("match_type", "条件筛选")
+    if match_type == "按月份专项关键词":
+        matched = [row for row in rows if _match_keywords(row, plan, headers, month_plan)]
+    elif match_type == "关键词筛选":
+        matched = [row for row in rows if _match_keywords(row, plan, headers)]
+    else:
+        matched = [row for row in rows if _match_conditions(row, plan.get("conditions") or [], headers)]
+    sampling = plan.get("sampling") or {}
+    if sampling.get("enabled") and matched:
+        mode = sampling.get("mode", "按比例")
+        value = float(sampling.get("value", 0.2) or 0.2)
+        min_count = int(sampling.get("min_count", 1) or 1)
+        if mode == "按数量":
+            keep_count = int(value)
+        else:
+            ratio = value / 100 if value > 1 else value
+            keep_count = int((len(matched) * ratio) + 0.999999)
+        keep_count = max(min_count, keep_count)
+        matched = random.sample(matched, min(keep_count, len(matched)))
+    return matched
+
+
+def _apply_plan_overtime(rows, plan, headers, duration_col):
+    overtime = plan.get("overtime") or {}
+    if not overtime.get("enabled"):
+        return rows, []
+    send_col = _resolve_col(overtime.get("send_column"), headers, 1)
+    process_col = _resolve_col(overtime.get("process_column"), headers, 28)
+    id_col = _resolve_col(overtime.get("id_column"), headers, 2)
+    threshold = float(overtime.get("threshold_minutes", 20) or 20)
+    overtime_ids = []
+    updated_rows = []
+    for row in rows:
+        send_time = _parse_datetime(_row_value(row, send_col))
+        process_time = _parse_datetime(_row_value(row, process_col))
+        if send_time and process_time:
+            minutes = round((process_time - send_time).total_seconds() / 60, 2)
+            row = _set_row_value(row, duration_col, minutes)
+            if minutes > threshold:
+                overtime_ids.append(_row_text(row, id_col))
+        else:
+            row = _set_row_value(row, duration_col, "时间格式错误")
+        updated_rows.append(row)
+    return updated_rows, overtime_ids
+
+
 def process_file(input_path, output_dir=None, inspector="未命名质检员", run_date=None, config_path=None, progress_callback=None, scheme_id=None):
     def progress(message):
         if progress_callback:
@@ -427,46 +659,26 @@ def process_file(input_path, output_dir=None, inspector="未命名质检员", ru
 
     duration_col = max_col + 1
     header = _set_row_value(header, duration_col, "处理时长(分钟)")
-    overtime_ids = []
-    progress("统计超时舆情...")
-    processed_rows = []
-    for row in filtered_rows:
-        if (
-            _row_text(row, col_r) == values.get("valid_yes", "是")
-            and _row_text(row, col_s) == values.get("marketing_yes", "是")
-            and _row_text(row, col_u) == values.get("duplicate_no", "否")
-        ):
-            send_time = _parse_datetime(_row_value(row, col_send))
-            process_time = _parse_datetime(_row_value(row, col_process))
-            if send_time and process_time:
-                minutes = round((process_time - send_time).total_seconds() / 60, 2)
-                row = _set_row_value(row, duration_col, minutes)
-                if minutes > overtime_threshold:
-                    overtime_ids.append(_row_text(row, col_id))
-            else:
-                row = _set_row_value(row, duration_col, "时间格式错误")
-        processed_rows.append(row)
-
+    processed_rows = list(filtered_rows)
     month_plan = get_monthly_plan(run_date.month, config.get("monthly_special_plans"))
-    special_sheet_name = _safe_sheet_name(month_plan["name"] + "复核")
-    keywords = [kw.lower() for kw in month_plan["keywords"]]
+    review_plans = _normalize_review_plans(scheme)
+    plan_results = []
+    all_overtime_ids = []
 
-    progress(f"执行月度专项：{month_plan['name']}")
-    special_rows = []
-    for row in processed_rows:
-        text = " ".join(_row_text(row, col) for col in special_target_columns).lower()
-        if any(keyword in text for keyword in keywords):
-            special_rows.append(row)
-    progress(f"月度专项命中：{len(special_rows)} 行")
-
-    progress("生成舆情提醒和无效复核数据...")
-    reminder_rows = [row for row in processed_rows if _row_text(row, col_reminder) == values.get("reminder", "舆情提醒")]
-    invalid_source_rows = [row for row in processed_rows if _row_text(row, col_r) == values.get("valid_no", "否")]
-    if invalid_source_rows:
-        keep_count = max(invalid_sample_min, int((len(invalid_source_rows) * invalid_sample_rate) + 0.999999))
-        invalid_rows = random.sample(invalid_source_rows, min(keep_count, len(invalid_source_rows)))
-    else:
-        invalid_rows = []
+    progress("执行质检计划...")
+    for plan in review_plans:
+        if not plan.get("enabled", True):
+            continue
+        run_plan = copy_json(plan)
+        if run_plan.get("role") == "monthly_special" and run_plan.get("match_type") == "按月份专项关键词":
+            run_plan["name"] = month_plan["name"]
+            run_plan["keywords"] = "，".join(month_plan.get("keywords") or [])
+            run_plan["keyword_columns"] = ",".join(get_column_letter(col) for col in special_target_columns)
+        matched_rows = _run_review_plan(processed_rows, run_plan, headers, month_plan if run_plan.get("match_type") == "按月份专项关键词" else None)
+        matched_rows, overtime_ids = _apply_plan_overtime(matched_rows, run_plan, headers, duration_col)
+        all_overtime_ids.extend([item for item in overtime_ids if item])
+        plan_results.append({"plan": run_plan, "rows": matched_rows, "overtime_ids": overtime_ids})
+        progress(f"{run_plan.get('name', '质检计划')}：命中 {len(matched_rows)} 行")
 
     progress("生成日报送文本...")
     a = sum(1 for row in processed_rows if _row_text(row, 1))
@@ -487,9 +699,16 @@ def process_file(input_path, output_dir=None, inspector="未命名质检员", ru
     out_wb = Workbook()
     out_wb.remove(out_wb.active)
     progress("导出最终质检明细...")
-    _append_review_sheet(out_wb, special_sheet_name, header, special_rows, inspector)
-    _append_review_sheet(out_wb, "无效复核", header, invalid_rows, inspector)
-    _append_review_sheet(out_wb, "舆情提醒复核", header, reminder_rows, inspector)
+    for result in plan_results:
+        plan = result["plan"]
+        if not plan.get("output_sheet", True):
+            continue
+        sheet_name = plan.get("name", "质检计划")
+        if plan.get("role") == "monthly_special" and not sheet_name.endswith("复核"):
+            sheet_name += "复核"
+        _append_review_sheet(out_wb, _safe_sheet_name(sheet_name), header, result["rows"], inspector)
+    if not out_wb.worksheets:
+        _append_review_sheet(out_wb, "质检结果", header, [], inspector)
 
     yesterday = run_date - timedelta(days=1)
     file_name = f"{yesterday.year}年{yesterday.month}月{yesterday.day}日8点-{run_date.year}年{run_date.month}月{run_date.day}日8点舆情质检明细({inspector}).xlsx"
@@ -501,9 +720,13 @@ def process_file(input_path, output_dir=None, inspector="未命名质检员", ru
         "output_path": str(output_path),
         "report_text": report_text,
         "special_name": month_plan["name"],
-        "special_count": len(special_rows),
-        "reminder_count": len(reminder_rows),
-        "invalid_count": len(invalid_rows),
-        "overtime_count": len(overtime_ids),
-        "overtime_ids": overtime_ids,
+        "special_count": next((len(item["rows"]) for item in plan_results if item["plan"].get("role") == "monthly_special"), 0),
+        "reminder_count": next((len(item["rows"]) for item in plan_results if item["plan"].get("role") == "reminder_review"), 0),
+        "invalid_count": next((len(item["rows"]) for item in plan_results if item["plan"].get("role") == "invalid_review"), 0),
+        "overtime_count": len(all_overtime_ids),
+        "overtime_ids": all_overtime_ids,
+        "plan_results": [
+            {"name": item["plan"].get("name", "质检计划"), "count": len(item["rows"]), "overtime_count": len(item["overtime_ids"])}
+            for item in plan_results
+        ],
     }
