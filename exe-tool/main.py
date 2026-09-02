@@ -656,6 +656,7 @@ class SchemeConfigWindow(tk.Toplevel):
             "match_type": "条件筛选",
             "keyword_columns": "",
             "keywords": "",
+            "apply_conditions": False,
             "conditions": [{"column": "", "operator": "等于", "value": ""}],
             "sampling": {"enabled": False, "mode": "按比例", "value": 0.2, "min_count": 1},
             "overtime": {"enabled": False, "mode": "按起止时间计算", "send_column": "A", "process_column": "AB", "duration_column": "", "threshold_minutes": 20, "id_column": "B"},
@@ -674,6 +675,7 @@ class SchemeConfigWindow(tk.Toplevel):
         match_type_var = tk.StringVar(value=item.get("match_type") or "条件筛选")
         columns_var = tk.StringVar(value=str(item.get("keyword_columns") or ""))
         keywords_var = tk.StringVar(value=str(item.get("keywords") or ""))
+        apply_conditions_var = tk.BooleanVar(value=item.get("apply_conditions") is True)
         conditions_var = tk.StringVar(value=self._conditions_to_text(item.get("conditions") or []))
         sampling_enabled_var = tk.BooleanVar(value=sampling.get("enabled") is True)
         sampling_mode_var = tk.StringVar(value=sampling.get("mode") or "按比例")
@@ -698,7 +700,10 @@ class SchemeConfigWindow(tk.Toplevel):
 
         ttk.Label(card, text="关键词匹配列").grid(row=1, column=0, sticky="w", pady=(0, 3))
         ttk.Label(card, text="关键词").grid(row=1, column=1, sticky="w", pady=(0, 3))
-        ttk.Label(card, text="条件筛选").grid(row=1, column=2, columnspan=2, sticky="w", pady=(0, 3))
+        condition_header = ttk.Frame(card)
+        condition_header.grid(row=1, column=2, columnspan=2, sticky="ew", pady=(0, 3))
+        ttk.Label(condition_header, text="条件筛选").pack(side="left")
+        ttk.Checkbutton(condition_header, text="关键词命中后继续按条件筛选", variable=apply_conditions_var).pack(side="left", padx=(12, 0))
         col_combo = ttk.Combobox(card, textvariable=columns_var, values=self._column_choices())
         col_combo.grid(row=2, column=0, sticky="ew", padx=(0, 8), pady=3)
         keyword_frame = ttk.Frame(card)
@@ -757,6 +762,7 @@ class SchemeConfigWindow(tk.Toplevel):
             "match_type": match_type_var,
             "columns": columns_var,
             "keywords": keywords_var,
+            "apply_conditions": apply_conditions_var,
             "conditions": conditions_var,
             "sampling_enabled": sampling_enabled_var,
             "sampling_mode": sampling_mode_var,
@@ -817,6 +823,7 @@ class SchemeConfigWindow(tk.Toplevel):
                 "keywords": row["keywords"].get().strip(),
                 "match_mode": "包含",
                 "case_sensitive": False,
+                "apply_conditions": bool(row["apply_conditions"].get()),
                 "conditions": self._parse_conditions(row["conditions"].get()),
                 "sampling": {
                     "enabled": bool(row["sampling_enabled"].get()),
@@ -924,6 +931,8 @@ def load_config_headers(path):
     wb = load_workbook(path, read_only=True, data_only=False)
     try:
         ws = wb.worksheets[0]
+        if ws.max_row == 1 and ws.max_column == 1:
+            ws.reset_dimensions()
         row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), ())
         choices = []
         for idx, value in enumerate(row, start=1):

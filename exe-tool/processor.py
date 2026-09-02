@@ -86,6 +86,7 @@ DEFAULT_SCHEME = {
             "keywords": "",
             "match_mode": "包含",
             "case_sensitive": False,
+            "apply_conditions": False,
             "conditions": [],
             "sampling": {"enabled": False, "mode": "按比例", "value": 0.2, "min_count": 1},
             "overtime": {"enabled": False, "mode": "按起止时间计算", "send_column": "A", "process_column": "AB", "duration_column": "", "threshold_minutes": 20, "id_column": "B"},
@@ -100,6 +101,7 @@ DEFAULT_SCHEME = {
             "keywords": "",
             "match_mode": "包含",
             "case_sensitive": False,
+            "apply_conditions": False,
             "conditions": [{"column": "R", "operator": "等于", "value": "否"}],
             "sampling": {"enabled": True, "mode": "按比例", "value": 0.2, "min_count": 1},
             "overtime": {"enabled": False, "mode": "按起止时间计算", "send_column": "A", "process_column": "AB", "duration_column": "", "threshold_minutes": 20, "id_column": "B"},
@@ -114,6 +116,7 @@ DEFAULT_SCHEME = {
             "keywords": "",
             "match_mode": "包含",
             "case_sensitive": False,
+            "apply_conditions": False,
             "conditions": [{"column": "T", "operator": "等于", "value": "舆情提醒"}],
             "sampling": {"enabled": False, "mode": "按比例", "value": 0.2, "min_count": 1},
             "overtime": {"enabled": False, "mode": "按起止时间计算", "send_column": "A", "process_column": "AB", "duration_column": "", "threshold_minutes": 20, "id_column": "B"},
@@ -128,6 +131,7 @@ DEFAULT_SCHEME = {
             "keywords": "",
             "match_mode": "包含",
             "case_sensitive": False,
+            "apply_conditions": False,
             "conditions": [
                 {"column": "R", "operator": "等于", "value": "是"},
                 {"column": "S", "operator": "等于", "value": "是"},
@@ -342,6 +346,7 @@ def _normalize_review_plan(plan):
         "keywords": str(plan.get("keywords") or ""),
         "match_mode": str(plan.get("match_mode") or "包含").strip(),
         "case_sensitive": bool(plan.get("case_sensitive", False)),
+        "apply_conditions": plan.get("apply_conditions", False) is True,
         "conditions": [
             {
                 "column": str(cond.get("column") or "").strip(),
@@ -561,6 +566,8 @@ def _run_review_plan(rows, plan, headers, month_plan=None):
         matched = [row for row in rows if _match_keywords(row, plan, headers)]
     else:
         matched = [row for row in rows if _match_conditions(row, plan.get("conditions") or [], headers)]
+    if match_type in {"按月份专项关键词", "关键词筛选"} and plan.get("apply_conditions"):
+        matched = [row for row in matched if _match_conditions(row, plan.get("conditions") or [], headers)]
     sampling = plan.get("sampling") or {}
     if sampling.get("enabled") and matched:
         mode = sampling.get("mode", "按比例")
@@ -636,9 +643,9 @@ def process_file(input_path, output_dir=None, inspector="未命名质检员", ru
     progress("读取 Excel 文件...")
     wb = load_workbook(input_path, read_only=True, data_only=False)
     src_ws = wb.worksheets[0]
-    max_col = src_ws.max_column
+    if src_ws.max_row == 1 and src_ws.max_column == 1:
+        src_ws.reset_dimensions()
 
-    progress(f"源表数据：{src_ws.max_row - 1} 行，{max_col} 列")
     progress("读取并筛选数据...")
     source_rows = src_ws.iter_rows(values_only=True)
     try:
@@ -647,6 +654,9 @@ def process_file(input_path, output_dir=None, inspector="未命名质检员", ru
         raise ValueError("源文件没有可处理的数据")
 
     headers = list(header)
+    max_col = max(src_ws.max_column or 0, len(header))
+    total_rows = src_ws.max_row - 1 if src_ws.max_row else "未知"
+    progress(f"源表数据：{total_rows} 行，{max_col} 列")
     col_keep = _resolve_col(fields.get("keep"), headers, 33)
     col_company = _resolve_col(fields.get("company"), headers, 8)
     col_send = _resolve_col(fields.get("send_time"), headers, _find_col(headers, "工单派发时间", 1))
