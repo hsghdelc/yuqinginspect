@@ -17,5 +17,7 @@
   ],
   "special_target_columns": [3, 11],
   "overtime_threshold_minutes": 20,
-  "preserve_cell_styles": false
+  "preserve_cell_styles": false,
+  "config_version": "2026-09-02-001",
+  "config_remark": "默认结构方案"
 }

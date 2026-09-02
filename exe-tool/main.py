@@ -1,6 +1,9 @@
 import copy
+import json
+import sys
 import threading
 import tkinter as tk
+from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
@@ -11,18 +14,33 @@ except Exception:
     TkinterDnD = None
 
 from monthly_special import get_default_monthly_plans
-from processor import DEFAULT_SCHEME, DEFAULT_SCHEME_ID, copy_json, load_config, process_file, save_config
+from processor import (
+    DEFAULT_SCHEME,
+    DEFAULT_SCHEME_ID,
+    copy_json,
+    load_config,
+    load_workbook_headers,
+    process_file,
+    save_config,
+    validate_config_for_file,
+)
 
 
 BaseTk = TkinterDnD.Tk if TkinterDnD else tk.Tk
+
+
+def app_dir():
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
 
 
 class ReviewTool(BaseTk):
     def __init__(self):
         super().__init__()
         self.title("南方分中心舆情质检辅助工具")
-        self.geometry("860x620")
-        self.minsize(820, 560)
+        self.geometry("980x640")
+        self.minsize(920, 580)
 
         self.input_path = tk.StringVar()
         self.output_dir = tk.StringVar(value=str(Path.home() / "Desktop"))
@@ -51,6 +69,9 @@ class ReviewTool(BaseTk):
         ).grid(row=0, column=0, sticky="w")
         ttk.Button(header, text="方案配置", command=self.open_scheme_config).grid(row=0, column=1, padx=(10, 0))
         ttk.Button(header, text="专项配置", command=self.open_special_config).grid(row=0, column=2, padx=(8, 0))
+        ttk.Button(header, text="导入配置", command=self.import_config).grid(row=0, column=3, padx=(8, 0))
+        ttk.Button(header, text="导出配置", command=self.export_config).grid(row=0, column=4, padx=(8, 0))
+        ttk.Button(header, text="恢复备份", command=self.open_backup_restore).grid(row=0, column=5, padx=(8, 0))
 
         form = ttk.LabelFrame(self, text="文件与人员", padding=(14, 12))
         form.grid(row=1, column=0, sticky="ew", padx=18, pady=(0, 12))
@@ -152,6 +173,61 @@ class ReviewTool(BaseTk):
     def open_special_config(self):
         SpecialConfigWindow(self)
 
+    def export_config(self):
+        config = load_config()
+        scheme_name = self.scheme_var.get() or "当前方案"
+        default_name = "舆情质检配置_" + datetime.now().strftime("%Y%m%d") + "_" + scheme_name + ".json"
+        path = filedialog.asksaveasfilename(
+            title="导出配置",
+            defaultextension=".json",
+            initialfile=default_name,
+            filetypes=[("配置文件", "*.json"), ("所有文件", "*.*")],
+        )
+        if not path:
+            return
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+        self.status.set("配置已导出")
+        messagebox.showinfo("完成", "配置已导出。")
+
+    def import_config(self):
+        path = filedialog.askopenfilename(
+            title="导入配置",
+            filetypes=[("配置文件", "*.json"), ("所有文件", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                imported = json.load(f)
+            if not isinstance(imported, dict):
+                raise ValueError("配置文件格式不正确")
+            if "schemes" not in imported and "monthly_special_plans" not in imported:
+                raise ValueError("未识别到有效的质检配置内容")
+            save_config(imported)
+        except Exception as exc:
+            messagebox.showerror("导入失败", str(exc))
+            return
+        self.refresh_schemes()
+        self.status.set("配置已导入")
+        messagebox.showinfo("完成", "配置已导入，已自动备份导入前的旧配置。")
+
+    def open_backup_restore(self):
+        BackupRestoreWindow(self)
+
+    def _validate_before_run(self, input_path, scheme_id):
+        result = validate_config_for_file(input_path, scheme_id)
+        if not result["ok"]:
+            messagebox.showerror("配置校验未通过", "\n".join(result["errors"][:12]))
+            self._log("配置校验未通过：" + "；".join(result["errors"]), "red")
+            return False
+        summary = f"配置校验通过：当前方案【{result['scheme_name']}】，识别源表 {result['column_count']} 列。"
+        self._log(summary)
+        if result["warnings"]:
+            warning_text = "\n".join(result["warnings"][:12])
+            return messagebox.askyesno("配置校验提醒", warning_text + "\n\n是否继续处理？")
+        return True
+
     def run(self):
         input_path = self.input_path.get().strip()
         output_dir = self.output_dir.get().strip()
@@ -164,13 +240,15 @@ class ReviewTool(BaseTk):
         if not output_dir:
             messagebox.showwarning("提示", "请选择输出目录")
             return
+        scheme_id = self.selected_scheme_id()
+        if not self._validate_before_run(input_path, scheme_id):
+            return
 
         self.last_report_text = ""
         self.copy_button.config(state="disabled")
         self.run_button.config(state="disabled")
         self.status.set("正在处理，请稍候...")
         self._log("开始处理：" + input_path)
-        scheme_id = self.selected_scheme_id()
         inspector = self.inspector.get()
         threading.Thread(target=self._run_worker, args=(input_path, output_dir, scheme_id, inspector), daemon=True).start()
 
@@ -231,6 +309,63 @@ class ReviewTool(BaseTk):
         self.log.see("end")
 
 
+class BackupRestoreWindow(tk.Toplevel):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.parent = parent
+        self.title("恢复配置备份")
+        self.geometry("620x420")
+        self.minsize(560, 360)
+        self.transient(parent)
+        self.backup_dir = app_dir() / "config_backups"
+        self.backups = []
+        self._build_ui()
+        self.refresh()
+
+    def _build_ui(self):
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
+        ttk.Label(self, text="选择一个历史备份，恢复后会先自动备份当前配置。", foreground="#546179").grid(
+            row=0, column=0, sticky="w", padx=14, pady=(14, 8)
+        )
+        self.listbox = tk.Listbox(self, exportselection=False)
+        self.listbox.grid(row=1, column=0, sticky="nsew", padx=14, pady=(0, 10))
+        actions = ttk.Frame(self, padding=(14, 0, 14, 14))
+        actions.grid(row=2, column=0, sticky="ew")
+        ttk.Button(actions, text="刷新", command=self.refresh).pack(side="left")
+        ttk.Button(actions, text="恢复选中备份", command=self.restore_selected).pack(side="right")
+
+    def refresh(self):
+        self.listbox.delete(0, "end")
+        if not self.backup_dir.exists():
+            return
+        self.backups = sorted(self.backup_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for path in self.backups:
+            modified = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+            self.listbox.insert("end", f"{modified}  {path.name}")
+
+    def restore_selected(self):
+        if not self.listbox.curselection():
+            messagebox.showinfo("提示", "请先选择一个备份。")
+            return
+        path = self.backups[self.listbox.curselection()[0]]
+        if not messagebox.askyesno("确认恢复", "确认恢复选中的配置备份？"):
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                restored = json.load(f)
+            if not isinstance(restored, dict):
+                raise ValueError("备份文件格式不正确")
+            save_config(restored)
+        except Exception as exc:
+            messagebox.showerror("恢复失败", str(exc))
+            return
+        self.parent.refresh_schemes()
+        self.parent.status.set("配置备份已恢复")
+        messagebox.showinfo("完成", "配置备份已恢复。")
+        self.destroy()
+
+
 class SchemeConfigWindow(tk.Toplevel):
     FIELD_OPTIONS = [
         ("keep", "基础保留"),
@@ -273,6 +408,8 @@ class SchemeConfigWindow(tk.Toplevel):
         self.current_scheme_id = None
         self.header_choices = []
         self.name_var = tk.StringVar()
+        self.config_version_var = tk.StringVar(value=self.config_data.get("config_version", ""))
+        self.config_remark_var = tk.StringVar(value=self.config_data.get("config_remark", ""))
         self.sample_rate_var = tk.StringVar()
         self.sample_min_var = tk.StringVar()
         self.overtime_var = tk.StringVar()
@@ -308,9 +445,14 @@ class SchemeConfigWindow(tk.Toplevel):
         top = ttk.Frame(right)
         top.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         top.columnconfigure(1, weight=1)
+        top.columnconfigure(3, weight=1)
         ttk.Label(top, text="方案名称").grid(row=0, column=0, sticky="e", padx=(0, 8))
         ttk.Entry(top, textvariable=self.name_var).grid(row=0, column=1, sticky="ew")
-        ttk.Button(top, text="读取源文件表头", command=self.load_headers).grid(row=0, column=2, padx=(10, 0))
+        ttk.Label(top, text="配置版本").grid(row=0, column=2, sticky="e", padx=(10, 8))
+        ttk.Entry(top, textvariable=self.config_version_var).grid(row=0, column=3, sticky="ew")
+        ttk.Label(top, text="配置备注").grid(row=1, column=0, sticky="e", padx=(0, 8), pady=(8, 0))
+        ttk.Entry(top, textvariable=self.config_remark_var).grid(row=1, column=1, columnspan=3, sticky="ew", pady=(8, 0))
+        ttk.Button(top, text="读取源文件表头", command=self.load_headers).grid(row=0, column=4, rowspan=2, padx=(10, 0))
 
         notebook = ttk.Notebook(right)
         notebook.grid(row=1, column=0, sticky="nsew")
@@ -425,7 +567,7 @@ class SchemeConfigWindow(tk.Toplevel):
         except ValueError:
             messagebox.showerror("配置错误", "抽样比例、最少条数和超时阈值必须是数字。")
             return False
-        self.schemes[self.current_scheme_id] = {
+        new_scheme = {
             "id": self.current_scheme_id,
             "name": self.name_var.get().strip() or self.current_scheme_id,
             "fields": fields,
@@ -437,6 +579,11 @@ class SchemeConfigWindow(tk.Toplevel):
             "invalid_sample_min": sample_min,
             "overtime_threshold_minutes": overtime,
         }
+        errors = self._validate_scheme_for_save(new_scheme)
+        if errors:
+            messagebox.showerror("配置错误", "\n".join(errors[:12]))
+            return False
+        self.schemes[self.current_scheme_id] = new_scheme
         if show_message:
             messagebox.showinfo("已保存", "当前方案已暂存")
         return True
@@ -503,6 +650,10 @@ class SchemeConfigWindow(tk.Toplevel):
     def save_all_and_close(self):
         if not self.save_current_scheme(show_message=False):
             return
+        if not self.config_version_var.get().strip():
+            self.config_version_var.set(datetime.now().strftime("%Y-%m-%d-001"))
+        self.config_data["config_version"] = self.config_version_var.get().strip()
+        self.config_data["config_remark"] = self.config_remark_var.get().strip()
         self.config_data["schemes"] = self.schemes
         if not self.config_data.get("active_scheme_id"):
             self.config_data["active_scheme_id"] = self.current_scheme_id or DEFAULT_SCHEME_ID
@@ -843,6 +994,41 @@ class SchemeConfigWindow(tk.Toplevel):
             })
         return plans
 
+    def _validate_scheme_for_save(self, scheme):
+        errors = []
+        if not (scheme.get("name") or "").strip():
+            errors.append("方案名称不能为空。")
+        plans = [plan for plan in scheme.get("review_plans") or [] if plan.get("enabled", True)]
+        if not plans:
+            errors.append("至少需要启用一个质检计划。")
+        for idx, plan in enumerate(plans, start=1):
+            name = plan.get("name") or f"质检计划{idx}"
+            match_type = plan.get("match_type", "条件筛选")
+            if match_type in {"关键词筛选", "按月份专项关键词"} and not plan.get("keyword_columns"):
+                errors.append(f"质检计划【{name}】未配置关键词匹配列。")
+            if match_type == "关键词筛选" and not plan.get("keywords"):
+                errors.append(f"质检计划【{name}】选择了关键词筛选，但关键词为空。")
+            if (match_type == "条件筛选" or plan.get("apply_conditions")) and not plan.get("conditions"):
+                errors.append(f"质检计划【{name}】需要条件筛选，但条件为空。")
+            sampling = plan.get("sampling") or {}
+            if sampling.get("enabled"):
+                if float(sampling.get("value", 0) or 0) <= 0:
+                    errors.append(f"质检计划【{name}】抽样值必须大于 0。")
+                if int(sampling.get("min_count", 0) or 0) < 0:
+                    errors.append(f"质检计划【{name}】最少条数不能小于 0。")
+            overtime = plan.get("overtime") or {}
+            if overtime.get("enabled"):
+                if not overtime.get("id_column"):
+                    errors.append(f"质检计划【{name}】启用超时检查后必须配置编号列。")
+                if float(overtime.get("threshold_minutes", 20) or 20) < 0:
+                    errors.append(f"质检计划【{name}】超时阈值不能小于 0。")
+                if overtime.get("mode") == "使用已有处理时长列":
+                    if not overtime.get("duration_column"):
+                        errors.append(f"质检计划【{name}】使用已有处理时长列时，必须配置已有时长列。")
+                elif not overtime.get("send_column") or not overtime.get("process_column"):
+                    errors.append(f"质检计划【{name}】按起止时间计算时，必须配置派发时间列和处理时间列。")
+        return errors
+
     def _value_rules_from_plans(self, plans):
         values = {}
         columns = {}
@@ -926,22 +1112,13 @@ class SchemeConfigWindow(tk.Toplevel):
 
 
 def load_config_headers(path):
-    from openpyxl import load_workbook
-
-    wb = load_workbook(path, read_only=True, data_only=False)
-    try:
-        ws = wb.worksheets[0]
-        if ws.max_row == 1 and ws.max_column == 1:
-            ws.reset_dimensions()
-        row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), ())
-        choices = []
-        for idx, value in enumerate(row, start=1):
-            text = str(value).strip() if value is not None else ""
-            letter = get_column_name(idx)
-            choices.append(f"{letter} {text}" if text else letter)
-        return choices
-    finally:
-        wb.close()
+    row, _max_row, _max_col = load_workbook_headers(path)
+    choices = []
+    for idx, value in enumerate(row, start=1):
+        text = str(value).strip() if value is not None else ""
+        letter = get_column_name(idx)
+        choices.append(f"{letter} {text}" if text else letter)
+    return choices
 
 
 def get_column_name(index):

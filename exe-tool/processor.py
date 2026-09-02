@@ -1,6 +1,7 @@
 import random
 import json
 import sys
+import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -163,6 +164,8 @@ def load_config(config_path=None):
         "monthly_special_plans": get_default_monthly_plans(),
         "active_scheme_id": DEFAULT_SCHEME_ID,
         "schemes": {DEFAULT_SCHEME_ID: DEFAULT_SCHEME},
+        "config_version": datetime.now().strftime("%Y-%m-%d-001"),
+        "config_remark": "",
     }
     if not path.exists():
         return default
@@ -175,6 +178,11 @@ def load_config(config_path=None):
 
 def save_config(config, config_path=None):
     path = Path(config_path) if config_path else _app_dir() / "config.json"
+    if config_path is None and path.exists():
+        backup_dir = _app_dir() / "config_backups"
+        backup_dir.mkdir(exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        shutil.copy2(path, backup_dir / f"配置备份_{stamp}.json")
     with path.open("w", encoding="utf-8") as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
 
@@ -450,6 +458,131 @@ def _resolve_cols(specs, headers, default_indexes):
     return columns or default_indexes
 
 
+def _parse_col_specs(specs):
+    if isinstance(specs, (list, tuple)):
+        parts = specs
+    else:
+        parts = str(specs or "").replace("，", ",").replace("、", ",").split(",")
+    return [str(part).strip() for part in parts if str(part).strip()]
+
+
+def _spec_exists(spec, headers):
+    text = str(spec or "").strip()
+    if not text:
+        return False
+    col = _resolve_col(text, headers, 0)
+    return 1 <= col <= len(headers)
+
+
+def _validate_column_specs(label, specs, headers, errors):
+    parts = _parse_col_specs(specs)
+    if not parts:
+        errors.append(f"{label}未配置列。")
+        return
+    for part in parts:
+        if not _spec_exists(part, headers):
+            errors.append(f"{label}配置为【{part}】，当前源文件未识别到该列。")
+
+
+def load_workbook_headers(path):
+    wb = load_workbook(path, read_only=True, data_only=False)
+    try:
+        ws = wb.worksheets[0]
+        if ws.max_row == 1 and ws.max_column == 1:
+            ws.reset_dimensions()
+        row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), ())
+        headers = list(row)
+        max_col = max(ws.max_column or 0, len(headers))
+        max_row = ws.max_row
+        return headers, max_row, max_col
+    finally:
+        wb.close()
+
+
+def validate_config_for_file(input_path=None, scheme_id=None, config_path=None):
+    config = load_config(config_path)
+    scheme = get_active_scheme(config, scheme_id)
+    errors = []
+    warnings = []
+    headers = []
+    max_row = None
+    max_col = 0
+    if input_path:
+        try:
+            headers, max_row, max_col = load_workbook_headers(input_path)
+            if not headers:
+                errors.append("源文件未读取到表头。")
+        except Exception as exc:
+            errors.append(f"源文件表头读取失败：{exc}")
+
+    fields = {**(scheme.get("fields") or DEFAULT_SCHEME["fields"]), **_fields_from_items(scheme.get("field_items"))}
+    values = scheme.get("values") or {}
+    if not values.get("company_names"):
+        warnings.append("公司名单为空，公司筛选可能无法保留任何数据。")
+
+    if headers:
+        for label, spec in [("基础保留列", fields.get("keep")), ("公司筛选列", fields.get("company")), ("编号列", fields.get("id"))]:
+            _validate_column_specs(label, spec, headers, errors)
+
+    active_plans = [plan for plan in _normalize_review_plans(scheme) if plan.get("enabled", True)]
+    if not active_plans:
+        errors.append("当前方案未启用任何质检计划。")
+    for idx, plan in enumerate(active_plans, start=1):
+        name = plan.get("name") or f"质检计划{idx}"
+        match_type = plan.get("match_type", "条件筛选")
+        if match_type in {"按月份专项关键词", "关键词筛选"}:
+            if headers:
+                _validate_column_specs(f"质检计划【{name}】关键词匹配列", plan.get("keyword_columns"), headers, errors)
+            if match_type == "关键词筛选" and not _split_items(plan.get("keywords")):
+                errors.append(f"质检计划【{name}】选择了关键词筛选，但关键词为空。")
+        needs_conditions = match_type == "条件筛选" or plan.get("apply_conditions")
+        if needs_conditions and not plan.get("conditions"):
+            errors.append(f"质检计划【{name}】需要条件筛选，但条件为空。")
+        if headers:
+            for condition in plan.get("conditions") or []:
+                col = condition.get("column")
+                if not _spec_exists(col, headers):
+                    errors.append(f"质检计划【{name}】条件列【{str(col or '').strip() or '未填写'}】当前源文件未识别到。")
+        sampling = plan.get("sampling") or {}
+        if sampling.get("enabled"):
+            try:
+                value = float(sampling.get("value", 0))
+                min_count = int(sampling.get("min_count", 1))
+                if value <= 0:
+                    errors.append(f"质检计划【{name}】抽样值必须大于 0。")
+                if min_count < 0:
+                    errors.append(f"质检计划【{name}】最少条数不能小于 0。")
+                if sampling.get("mode") == "按比例" and value > 100:
+                    warnings.append(f"质检计划【{name}】抽样比例超过 100%，将等同于保留全部命中数据。")
+            except (TypeError, ValueError):
+                errors.append(f"质检计划【{name}】抽样值或最少条数不是有效数字。")
+        overtime = plan.get("overtime") or {}
+        if overtime.get("enabled"):
+            try:
+                threshold = float(overtime.get("threshold_minutes", 20))
+                if threshold < 0:
+                    errors.append(f"质检计划【{name}】超时阈值不能小于 0。")
+            except (TypeError, ValueError):
+                errors.append(f"质检计划【{name}】超时阈值不是有效数字。")
+            if headers:
+                _validate_column_specs(f"质检计划【{name}】编号列", overtime.get("id_column"), headers, errors)
+                if overtime.get("mode") == "使用已有处理时长列":
+                    _validate_column_specs(f"质检计划【{name}】已有处理时长列", overtime.get("duration_column"), headers, errors)
+                else:
+                    _validate_column_specs(f"质检计划【{name}】派发时间列", overtime.get("send_column"), headers, errors)
+                    _validate_column_specs(f"质检计划【{name}】处理时间列", overtime.get("process_column"), headers, errors)
+
+    return {
+        "ok": not errors,
+        "errors": errors,
+        "warnings": warnings,
+        "scheme_name": scheme.get("name", DEFAULT_SCHEME["name"]),
+        "header_count": len(headers),
+        "row_count": (max_row - 1) if isinstance(max_row, int) and max_row > 0 else None,
+        "column_count": max_col,
+    }
+
+
 def _row_value(row, col):
     idx = col - 1
     if idx < 0 or idx >= len(row):
@@ -488,18 +621,91 @@ def _parse_datetime(value):
         return None
 
 
-def _append_review_sheet(wb, title, header, rows, inspector):
+def _conditions_to_text(conditions):
+    parts = []
+    for condition in conditions or []:
+        column = str(condition.get("column") or "").strip()
+        value = str(condition.get("value") or "").strip()
+        operator = str(condition.get("operator") or "等于").strip()
+        if not column and not value:
+            continue
+        if operator == "等于":
+            parts.append(f"{column}={value}")
+        elif operator == "不等于":
+            parts.append(f"{column}!={value}")
+        else:
+            parts.append(f"{column}{operator}{value}")
+    return ";".join(parts)
+
+
+def _matched_keywords(row, plan, headers, month_plan=None):
+    columns = _resolve_cols(plan.get("keyword_columns"), headers, [3, 11])
+    source_keywords = month_plan.get("keywords") if month_plan else plan.get("keywords")
+    original_keywords = _split_items(source_keywords)
+    if not original_keywords:
+        return []
+    text = " ".join(_row_text(row, col) for col in columns)
+    compare_text = text if plan.get("case_sensitive", False) else text.lower()
+    matches = []
+    for keyword in original_keywords:
+        compare_keyword = keyword if plan.get("case_sensitive", False) else keyword.lower()
+        if plan.get("match_mode") == "等于":
+            hit = compare_text == compare_keyword
+        else:
+            hit = compare_keyword in compare_text
+        if hit:
+            matches.append(keyword)
+    return matches
+
+
+def _hit_reason(plan, row, headers, duration_col, month_plan=None):
+    match_type = plan.get("match_type", "条件筛选")
+    has_keyword_match = match_type in {"按月份专项关键词", "关键词筛选"}
+    keywords = _matched_keywords(row, plan, headers, month_plan) if has_keyword_match else []
+    condition_text = _conditions_to_text(plan.get("conditions") or []) if (match_type == "条件筛选" or plan.get("apply_conditions")) else ""
+    mode = "关键词筛选 + 条件筛选" if has_keyword_match and plan.get("apply_conditions") else match_type
+    overtime = plan.get("overtime") or {}
+    duration = _row_text(row, duration_col)
+    if overtime.get("enabled"):
+        try:
+            overtime_text = "超时" if float(duration) > float(overtime.get("threshold_minutes", 20) or 20) else "未超时"
+        except (TypeError, ValueError):
+            overtime_text = "无法判断"
+    else:
+        overtime_text = "未启用"
+    return {
+        "plan": plan.get("name", "质检计划"),
+        "mode": mode,
+        "keywords": "，".join(keywords),
+        "conditions": condition_text,
+        "overtime": overtime_text,
+    }
+
+
+def _append_review_sheet(wb, title, header, rows, inspector, plan=None, source_headers=None, duration_col=None, month_plan=None):
     ws = wb.create_sheet(title)
-    header = _set_row_value(header, 34, "质检人员")
-    header = _set_row_value(header, 35, "质检结果")
-    header = _set_row_value(header, 36, "补录单号")
+    base_col = len(header)
+    header = _set_row_value(header, base_col + 1, "质检人员")
+    header = _set_row_value(header, base_col + 2, "质检结果")
+    header = _set_row_value(header, base_col + 3, "补录单号")
+    header = _set_row_value(header, base_col + 4, "命中质检计划")
+    header = _set_row_value(header, base_col + 5, "命中方式")
+    header = _set_row_value(header, base_col + 6, "命中关键词")
+    header = _set_row_value(header, base_col + 7, "命中条件")
+    header = _set_row_value(header, base_col + 8, "超时判断")
     ws.append(header)
     for row in rows:
-        row = _set_row_value(row, 34, inspector)
-        row = _set_row_value(row, 35, "通过")
-        row = _set_row_value(row, 36, "")
+        reason = _hit_reason(plan or {}, row, source_headers or [], duration_col or len(header), month_plan)
+        row = _set_row_value(row, base_col + 1, inspector)
+        row = _set_row_value(row, base_col + 2, "通过")
+        row = _set_row_value(row, base_col + 3, "")
+        row = _set_row_value(row, base_col + 4, reason["plan"])
+        row = _set_row_value(row, base_col + 5, reason["mode"])
+        row = _set_row_value(row, base_col + 6, reason["keywords"])
+        row = _set_row_value(row, base_col + 7, reason["conditions"])
+        row = _set_row_value(row, base_col + 8, reason["overtime"])
         ws.append(row)
-    for col in range(1, max(36, len(header)) + 1):
+    for col in range(1, len(header) + 1):
         ws.column_dimensions[get_column_letter(col)].width = 15
 
 
@@ -544,18 +750,7 @@ def _match_conditions(row, conditions, headers):
 
 
 def _match_keywords(row, plan, headers, month_plan=None):
-    columns = _resolve_cols(plan.get("keyword_columns"), headers, [3, 11])
-    source_keywords = month_plan.get("keywords") if month_plan else plan.get("keywords")
-    keywords = _split_items(source_keywords)
-    if not keywords:
-        return False
-    text = " ".join(_row_text(row, col) for col in columns)
-    if not plan.get("case_sensitive", False):
-        text = text.lower()
-        keywords = [keyword.lower() for keyword in keywords]
-    if plan.get("match_mode") == "等于":
-        return any(text == keyword for keyword in keywords)
-    return any(keyword in text for keyword in keywords)
+    return bool(_matched_keywords(row, plan, headers, month_plan))
 
 
 def _run_review_plan(rows, plan, headers, month_plan=None):
@@ -631,6 +826,9 @@ def process_file(input_path, output_dir=None, inspector="未命名质检员", ru
     inspector = inspector.strip() or "未命名质检员"
     config = load_config(config_path)
     scheme = get_active_scheme(config, scheme_id)
+    validation = validate_config_for_file(input_path, scheme_id, config_path)
+    if not validation["ok"]:
+        raise ValueError("配置校验未通过：\n" + "\n".join(validation["errors"]))
     fields = {**(scheme.get("fields") or DEFAULT_SCHEME["fields"]), **_fields_from_items(scheme.get("field_items"))}
     rule_values, field_overrides = _values_from_rules(scheme.get("value_rules"))
     fields.update({key: value for key, value in field_overrides.items() if value})
@@ -735,9 +933,19 @@ def process_file(input_path, output_dir=None, inspector="未命名质检员", ru
         sheet_name = plan.get("name", "质检计划")
         if plan.get("role") == "monthly_special" and not sheet_name.endswith("复核"):
             sheet_name += "复核"
-        _append_review_sheet(out_wb, _safe_sheet_name(sheet_name), header, result["rows"], inspector)
+        _append_review_sheet(
+            out_wb,
+            _safe_sheet_name(sheet_name),
+            header,
+            result["rows"],
+            inspector,
+            plan=plan,
+            source_headers=headers,
+            duration_col=duration_col,
+            month_plan=month_plan if plan.get("match_type") == "按月份专项关键词" else None,
+        )
     if not out_wb.worksheets:
-        _append_review_sheet(out_wb, "质检结果", header, [], inspector)
+        _append_review_sheet(out_wb, "质检结果", header, [], inspector, source_headers=headers, duration_col=duration_col)
 
     yesterday = run_date - timedelta(days=1)
     file_name = f"{yesterday.year}年{yesterday.month}月{yesterday.day}日8点-{run_date.year}年{run_date.month}月{run_date.day}日8点舆情质检明细({inspector}).xlsx"
