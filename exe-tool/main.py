@@ -5,7 +5,9 @@ import threading
 import tkinter as tk
 from datetime import datetime
 from pathlib import Path
-from tkinter import filedialog, messagebox, scrolledtext, ttk
+from tkinter import filedialog, messagebox, ttk
+import customtkinter as ctk
+from PIL import Image, ImageDraw
 
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -29,6 +31,89 @@ from processor import (
 
 BaseTk = TkinterDnD.Tk if TkinterDnD else tk.Tk
 
+ctk.set_appearance_mode("light")
+ctk.set_default_color_theme("blue")
+
+BG = "#f1f6fa"
+SURFACE = "#ffffff"
+TEXT = "#102a43"
+MUTED = "#73839a"
+TEAL = "#07999d"
+TEAL_HOVER = "#07878b"
+BORDER = "#d7e2ec"
+FONT = "Microsoft YaHei UI"
+ICON_CACHE = {}
+
+
+def ui_icon(name, color="#1766a3", size=18):
+    key = (name, color, size)
+    if key in ICON_CACHE:
+        return ICON_CACHE[key]
+    scale = 3
+    width = size * scale
+    image = Image.new("RGBA", (width, width), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    stroke = scale * 2
+    pad = 4 * scale
+    mid = width // 2
+
+    if name in {"settings", "special"}:
+        draw.ellipse((pad, pad, width - pad, width - pad), outline=color, width=stroke)
+        draw.ellipse((mid - 3 * scale, mid - 3 * scale, mid + 3 * scale, mid + 3 * scale), outline=color, width=stroke)
+        draw.line((mid, pad - scale, mid, pad + 4 * scale), fill=color, width=stroke)
+        draw.line((mid, width - pad + scale, mid, width - pad - 4 * scale), fill=color, width=stroke)
+    elif name in {"import", "file"}:
+        draw.rounded_rectangle((pad + 2 * scale, pad, width - pad - 2 * scale, width - pad), radius=2 * scale, outline=color, width=stroke)
+        draw.line((mid, pad + 4 * scale, mid, width - pad - 6 * scale), fill=color, width=stroke)
+        draw.line((mid - 4 * scale, mid, mid, mid + 4 * scale, mid + 4 * scale, mid), fill=color, width=stroke)
+    elif name in {"export", "download"}:
+        draw.line((mid, pad, mid, width - pad - 6 * scale), fill=color, width=stroke)
+        draw.line((mid - 5 * scale, mid, mid, mid + 5 * scale, mid + 5 * scale, mid), fill=color, width=stroke)
+        draw.line((pad, width - pad, width - pad, width - pad), fill=color, width=stroke)
+    elif name == "restore":
+        draw.arc((pad, pad, width - pad, width - pad), 40, 320, fill=color, width=stroke)
+        draw.polygon(((pad, mid), (pad + 6 * scale, mid - 4 * scale), (pad + 6 * scale, mid + 4 * scale)), fill=color)
+    elif name in {"task", "monthly", "log"}:
+        draw.rounded_rectangle((pad + 2 * scale, pad + 3 * scale, width - pad - 2 * scale, width - pad), radius=2 * scale, outline=color, width=stroke)
+        draw.rounded_rectangle((mid - 4 * scale, pad, mid + 4 * scale, pad + 5 * scale), radius=2 * scale, fill=color)
+        for y in (mid - 2 * scale, mid + 4 * scale):
+            draw.line((pad + 6 * scale, y, width - pad - 6 * scale, y), fill=color, width=stroke)
+    elif name == "play":
+        draw.polygon(((pad + 4 * scale, pad), (width - pad, mid), (pad + 4 * scale, width - pad)), fill=color)
+    elif name == "trash":
+        draw.rounded_rectangle((pad + 4 * scale, pad + 6 * scale, width - pad - 4 * scale, width - pad), radius=2 * scale, outline=color, width=stroke)
+        draw.line((pad + 2 * scale, pad + 4 * scale, width - pad - 2 * scale, pad + 4 * scale), fill=color, width=stroke)
+        draw.line((mid - 3 * scale, pad, mid + 3 * scale, pad), fill=color, width=stroke)
+    elif name == "chart":
+        for idx, bar_height in enumerate((7, 11, 15)):
+            x = pad + idx * 6 * scale
+            draw.rounded_rectangle((x, width - pad - bar_height * scale, x + 4 * scale, width - pad), radius=scale, fill=color)
+    elif name in {"report", "copy"}:
+        draw.rounded_rectangle((pad + 5 * scale, pad, width - pad, width - pad - 5 * scale), radius=2 * scale, outline=color, width=stroke)
+        draw.rounded_rectangle((pad, pad + 5 * scale, width - pad - 5 * scale, width - pad), radius=2 * scale, outline=color, width=stroke)
+    elif name == "bell":
+        draw.arc((pad + 2 * scale, pad, width - pad - 2 * scale, width - pad + 2 * scale), 190, 350, fill=color, width=stroke)
+        draw.line((pad + 3 * scale, mid + 5 * scale, width - pad - 3 * scale, mid + 5 * scale), fill=color, width=stroke)
+        draw.ellipse((mid - 2 * scale, mid + 6 * scale, mid + 2 * scale, mid + 10 * scale), fill=color)
+    elif name == "invalid":
+        draw.rounded_rectangle((pad, pad, width - pad, width - pad), radius=2 * scale, outline=color, width=stroke)
+        draw.line((pad + 5 * scale, pad + 5 * scale, width - pad - 5 * scale, width - pad - 5 * scale), fill=color, width=stroke)
+        draw.line((width - pad - 5 * scale, pad + 5 * scale, pad + 5 * scale, width - pad - 5 * scale), fill=color, width=stroke)
+    elif name == "info":
+        draw.ellipse((pad, pad, width - pad, width - pad), outline=color, width=stroke)
+        draw.ellipse((mid - scale, pad + 4 * scale, mid + scale, pad + 6 * scale), fill=color)
+        draw.line((mid, mid - scale, mid, width - pad - 4 * scale), fill=color, width=stroke)
+    elif name in {"alert", "clock"}:
+        draw.ellipse((pad, pad, width - pad, width - pad), outline=color, width=stroke)
+        draw.line((mid, pad + 5 * scale, mid, mid), fill=color, width=stroke)
+        draw.line((mid, mid, mid + 5 * scale, mid + 3 * scale), fill=color, width=stroke)
+    else:
+        draw.rounded_rectangle((pad, pad, width - pad, width - pad), radius=3 * scale, outline=color, width=stroke)
+
+    result = ctk.CTkImage(light_image=image, dark_image=image, size=(size, size))
+    ICON_CACHE[key] = result
+    return result
+
 
 def app_dir():
     if getattr(sys, "frozen", False):
@@ -37,44 +122,214 @@ def app_dir():
 
 
 def apply_theme(window):
-    window.configure(background="#eef5fb")
+    window.configure(background=BG)
     style = ttk.Style(window)
     try:
         style.theme_use("clam")
     except tk.TclError:
         pass
-    style.configure(".", font=("Microsoft YaHei UI", 10), background="#eef5fb", foreground="#203047")
-    style.configure("TFrame", background="#eef5fb")
-    style.configure("Surface.TFrame", background="#ffffff", relief="solid", borderwidth=1)
-    style.configure("Card.TFrame", background="#f7fbff", relief="solid", borderwidth=1)
-    style.configure("DangerCard.TFrame", background="#fff1f1", relief="solid", borderwidth=1)
-    style.configure("TLabel", background="#eef5fb", foreground="#203047")
-    style.configure("Surface.TLabel", background="#ffffff", foreground="#203047")
-    style.configure("Muted.TLabel", background="#ffffff", foreground="#607089")
+    style.configure(".", font=(FONT, 10), background=BG, foreground=TEXT)
+    style.configure("TFrame", background=BG)
+    style.configure("Surface.TFrame", background=SURFACE, relief="flat", borderwidth=0)
+    style.configure("Card.TFrame", background="#f7fbff", relief="flat", borderwidth=0)
+    style.configure("DangerCard.TFrame", background="#fff1f1", relief="flat", borderwidth=0)
+    style.configure("TLabel", background=BG, foreground=TEXT)
+    style.configure("Surface.TLabel", background=SURFACE, foreground=TEXT)
+    style.configure("Muted.TLabel", background=SURFACE, foreground=MUTED)
     style.configure("CardMuted.TLabel", background="#f7fbff", foreground="#607089")
     style.configure("DangerMuted.TLabel", background="#fff1f1", foreground="#8a4b4b")
-    style.configure("Title.TLabel", background="#eef5fb", foreground="#10233f", font=("Microsoft YaHei UI", 17, "bold"))
-    style.configure("Section.TLabel", background="#ffffff", foreground="#14345f", font=("Microsoft YaHei UI", 12, "bold"))
+    style.configure("Title.TLabel", background=BG, foreground=TEXT, font=(FONT, 17, "bold"))
+    style.configure("Section.TLabel", background=SURFACE, foreground=TEXT, font=(FONT, 12, "bold"))
     style.configure("Metric.TLabel", background="#f7fbff", foreground="#0c65c8", font=("Microsoft YaHei UI", 22, "bold"))
     style.configure("DangerMetric.TLabel", background="#fff1f1", foreground="#d84343", font=("Microsoft YaHei UI", 22, "bold"))
-    style.configure("TButton", padding=(12, 7), background="#f8fbff", bordercolor="#cbd7e6", focusthickness=1)
-    style.configure("Primary.TButton", padding=(18, 9), background="#06979a", foreground="#ffffff", font=("Microsoft YaHei UI", 11, "bold"))
+    style.configure("TButton", padding=(12, 7), background=SURFACE, bordercolor=BORDER, relief="flat", focusthickness=0)
+    style.configure("Primary.TButton", padding=(18, 9), background=TEAL, foreground="#ffffff", font=(FONT, 11, "bold"))
     style.map("Primary.TButton", background=[("active", "#07878a"), ("disabled", "#a7cfd0")])
-    style.configure("TEntry", padding=(7, 5), fieldbackground="#ffffff", bordercolor="#cbd7e6")
-    style.configure("TCombobox", padding=(7, 5), fieldbackground="#ffffff", bordercolor="#cbd7e6")
-    style.configure("TNotebook", background="#eef5fb", borderwidth=0)
+    style.configure("TEntry", padding=(7, 5), fieldbackground=SURFACE, bordercolor=BORDER, relief="flat")
+    style.configure("TCombobox", padding=(7, 5), fieldbackground=SURFACE, bordercolor=BORDER, relief="flat")
+    style.configure("TNotebook", background=BG, borderwidth=0)
     style.configure("TNotebook.Tab", padding=(18, 8), background="#e7eef7")
     style.map("TNotebook.Tab", background=[("selected", "#ffffff")])
-    style.configure("Treeview", rowheight=30, background="#ffffff", fieldbackground="#ffffff", bordercolor="#dbe5ef")
-    style.configure("Treeview.Heading", background="#f3f7fb", foreground="#42536c", font=("Microsoft YaHei UI", 10, "bold"))
+    style.configure("Treeview", rowheight=30, background=SURFACE, fieldbackground=SURFACE, bordercolor=BORDER, relief="flat")
+    style.configure("Treeview.Heading", background="#f6f9fc", foreground="#42536c", font=(FONT, 10, "bold"), relief="flat")
+
+
+class ModernLogTable(ctk.CTkFrame):
+    STATUS_COLORS = {
+        "信息": ("#e2f1ff", "#1769aa"),
+        "成功": ("#dcf7e8", "#147a50"),
+        "预警": ("#fff0d4", "#b76400"),
+    }
+
+    def __init__(self, parent):
+        super().__init__(parent, fg_color=SURFACE, corner_radius=8, border_width=1, border_color="#e2eaf2")
+        self._rows = {}
+        self._next_id = 0
+        header = ctk.CTkFrame(self, fg_color="#f6f9fc", corner_radius=7, height=34)
+        header.pack(fill="x", padx=1, pady=(1, 0))
+        header.pack_propagate(False)
+        header.grid_columnconfigure(2, weight=1)
+        for col, text_value, width in ((0, "时间", 100), (1, "状态", 100), (2, "内容", 0)):
+            label = ctk.CTkLabel(header, text=text_value, text_color="#52657d", font=(FONT, 10, "bold"), anchor="w", width=width)
+            label.grid(row=0, column=col, sticky="ew", padx=(14, 4), pady=5)
+        self.body = ctk.CTkScrollableFrame(self, fg_color=SURFACE, corner_radius=0)
+        self.body.pack(fill="both", expand=True, padx=1, pady=(0, 1))
+        self.body.grid_columnconfigure(2, weight=1)
+
+    def insert(self, _parent, _where, values, tags=()):
+        row_id = str(self._next_id)
+        self._next_id += 1
+        row = ctk.CTkFrame(self.body, fg_color=SURFACE, corner_radius=0, height=32)
+        row.grid(row=self._next_id, column=0, columnspan=3, sticky="ew")
+        row.grid_columnconfigure(2, weight=1)
+        ctk.CTkLabel(row, text=str(values[0]), width=100, anchor="w", text_color="#42566e").grid(row=0, column=0, sticky="ew", padx=(14, 4), pady=3)
+        status = str(values[1])
+        pill_bg, pill_fg = self.STATUS_COLORS.get(status, self.STATUS_COLORS["信息"])
+        ctk.CTkLabel(row, text=status, width=58, height=22, corner_radius=11, fg_color=pill_bg, text_color=pill_fg, font=(FONT, 9, "bold")).grid(row=0, column=1, padx=(14, 24), pady=4)
+        ctk.CTkLabel(row, text=str(values[2]), anchor="w", justify="left", text_color="#263b53").grid(row=0, column=2, sticky="ew", padx=(0, 12), pady=3)
+        ctk.CTkFrame(row, fg_color="#edf2f7", height=1, corner_radius=0).grid(row=1, column=0, columnspan=3, sticky="ew")
+        self._rows[row_id] = row
+        return row_id
+
+    def get_children(self):
+        return tuple(self._rows)
+
+    def delete(self, row_id):
+        row = self._rows.pop(str(row_id), None)
+        if row:
+            row.destroy()
+
+    def yview_moveto(self, fraction):
+        self.update_idletasks()
+        try:
+            self.body._parent_canvas.yview_moveto(fraction)
+        except (AttributeError, tk.TclError):
+            pass
+
+
+class ModernComboBox(ctk.CTkComboBox):
+    def __init__(self, master, **kwargs):
+        width = kwargs.pop("width", None)
+        if width is not None:
+            kwargs["width"] = max(110, int(width) * 9)
+        super().__init__(
+            master,
+            height=36,
+            corner_radius=7,
+            border_color=BORDER,
+            button_color="#edf4f8",
+            button_hover_color="#ddebf1",
+            fg_color=SURFACE,
+            text_color=TEXT,
+            dropdown_fg_color=SURFACE,
+            dropdown_text_color=TEXT,
+            **kwargs,
+        )
+
+    def current(self, index):
+        values = self.cget("values")
+        if 0 <= index < len(values):
+            self.set(values[index])
+
+    def __setitem__(self, key, value):
+        if key == "values":
+            self.configure(values=value or [""])
+            return
+        super().__setitem__(key, value)
+
+
+def ui_button(parent, text, command, primary=False, icon=None, **kwargs):
+    width = kwargs.pop("width", 100)
+    if width and width < 60:
+        width *= 9
+    return ctk.CTkButton(
+        parent,
+        text=text,
+        command=command,
+        width=width,
+        height=kwargs.pop("height", 36),
+        corner_radius=8,
+        fg_color=TEAL if primary else SURFACE,
+        hover_color="#07878a" if primary else "#eef4f8",
+        text_color="#ffffff" if primary else "#194a75",
+        border_width=0 if primary else 1,
+        border_color=BORDER,
+        font=(FONT, 10, "bold"),
+        image=ui_icon(icon, "#ffffff" if primary else "#1766a3", 16) if icon else None,
+        compound="left",
+        **kwargs,
+    )
+
+
+def ui_entry(parent, **kwargs):
+    width = kwargs.pop("width", None)
+    if width is not None:
+        kwargs["width"] = max(110, int(width) * 9)
+    return ctk.CTkEntry(
+        parent,
+        height=36,
+        corner_radius=7,
+        border_color=BORDER,
+        fg_color=SURFACE,
+        text_color=TEXT,
+        **kwargs,
+    )
+
+
+def ui_check(parent, text, variable, **kwargs):
+    return ctk.CTkCheckBox(
+        parent,
+        text=text,
+        variable=variable,
+        checkbox_width=20,
+        checkbox_height=20,
+        corner_radius=5,
+        border_color="#aabbd0",
+        fg_color=TEAL,
+        hover_color="#087f82",
+        text_color=TEXT,
+        font=(FONT, 10),
+        **kwargs,
+    )
+
+
+def ui_label(parent, **kwargs):
+    foreground = kwargs.pop("foreground", None)
+    style_name = kwargs.pop("style", "")
+    if foreground:
+        kwargs["text_color"] = foreground
+    elif "Muted" in style_name:
+        kwargs["text_color"] = MUTED
+    else:
+        kwargs.setdefault("text_color", TEXT)
+    if "Section" in style_name:
+        kwargs.setdefault("font", (FONT, 13, "bold"))
+    kwargs.setdefault("fg_color", "transparent")
+    return ctk.CTkLabel(parent, **kwargs)
+
+
+def ui_listbox(parent, **kwargs):
+    return tk.Listbox(
+        parent,
+        background=SURFACE,
+        foreground="#203047",
+        selectbackground="#dff3f4",
+        selectforeground="#075f62",
+        active_style="none",
+        relief="flat",
+        borderwidth=0,
+        highlightthickness=0,
+        font=(FONT, 10),
+        **kwargs,
+    )
 
 
 class ReviewTool(BaseTk):
     def __init__(self):
         super().__init__()
         self.title("南方分中心舆情质检辅助工具")
-        self.geometry("1120x720")
-        self.minsize(1040, 660)
+        self.geometry("1280x800")
+        self.minsize(1120, 700)
 
         self.input_path = tk.StringVar()
         self.output_dir = tk.StringVar(value=str(Path.home() / "Desktop"))
@@ -85,8 +340,10 @@ class ReviewTool(BaseTk):
         self.last_report_text = ""
         self.copy_button = None
         self.metric_vars = {}
+        self.metric_detail_vars = {}
         self.metrics_frame = None
         self.report_preview = None
+        self.drop_title_var = tk.StringVar(value="点击选择文件或拖拽文件到此处")
 
         self._set_app_icon()
         apply_theme(self)
@@ -111,128 +368,206 @@ class ReviewTool(BaseTk):
 
     def _build_ui(self):
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(2, weight=1)
+        self.rowconfigure(1, weight=1)
 
-        header = ttk.Frame(self, padding=(18, 14, 18, 10))
+        header = ctk.CTkFrame(self, fg_color="#f2f8fc", corner_radius=0, height=82)
         header.grid(row=0, column=0, sticky="ew")
-        header.columnconfigure(0, weight=1)
-        brand = ttk.Frame(header)
-        brand.grid(row=0, column=0, sticky="w")
-        ttk.Label(brand, text="南方分中心舆情质检辅助工具", style="Title.TLabel").grid(row=0, column=0, sticky="w")
-        tools = ttk.Frame(header)
-        tools.grid(row=0, column=1, sticky="e")
-        ttk.Button(tools, text="方案配置", command=self.open_scheme_config).grid(row=0, column=0, padx=(0, 8))
-        ttk.Button(tools, text="专项配置", command=self.open_special_config).grid(row=0, column=1, padx=(0, 8))
-        ttk.Button(tools, text="导入配置", command=self.import_config).grid(row=0, column=2, padx=(0, 8))
-        ttk.Button(tools, text="导出配置", command=self.export_config).grid(row=0, column=3, padx=(0, 8))
-        ttk.Button(tools, text="恢复备份", command=self.open_backup_restore).grid(row=0, column=4)
+        header.grid_propagate(False)
+        header.grid_columnconfigure(0, weight=1)
+        brand = ctk.CTkFrame(header, fg_color="transparent")
+        brand.grid(row=0, column=0, sticky="w", padx=22, pady=14)
+        icon_path = app_dir() / "assets" / "app_icon.png"
+        if icon_path.exists():
+            self.header_icon = ctk.CTkImage(Image.open(icon_path), size=(42, 42))
+            ctk.CTkLabel(brand, text="", image=self.header_icon, width=46).grid(row=0, column=0, rowspan=2, padx=(0, 10))
+        ctk.CTkLabel(brand, text="南方分中心舆情质检辅助工具", text_color=TEXT, font=(FONT, 20, "bold")).grid(row=0, column=1, sticky="w")
 
-        main = ttk.Frame(self, padding=(18, 0, 18, 12))
-        main.grid(row=1, column=0, rowspan=2, sticky="nsew")
+        tools = ctk.CTkFrame(header, fg_color="transparent")
+        tools.grid(row=0, column=1, sticky="e", padx=22, pady=14)
+        tool_items = (
+            ("方案配置", "settings", self.open_scheme_config),
+            ("专项配置", "special", self.open_special_config),
+            ("导入配置", "import", self.import_config),
+            ("导出配置", "export", self.export_config),
+            ("恢复备份", "restore", self.open_backup_restore),
+        )
+        for idx, (text_value, icon, command) in enumerate(tool_items):
+            self._button(tools, text_value, command, width=112, height=38, icon=icon).grid(row=0, column=idx, padx=(0 if idx == 0 else 7, 0))
+
+        main = ctk.CTkFrame(self, fg_color=BG, corner_radius=0)
+        main.grid(row=1, column=0, sticky="nsew", padx=14, pady=(8, 6))
         main.columnconfigure(0, weight=5)
         main.columnconfigure(1, weight=6)
         main.rowconfigure(1, weight=1)
 
-        task = ttk.Frame(main, style="Surface.TFrame", padding=(14, 12))
-        task.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=(0, 10))
+        task = self._panel(main)
+        task.grid(row=0, column=0, sticky="nsew", padx=(0, 7), pady=(0, 10))
+        task.columnconfigure(0, minsize=86)
         task.columnconfigure(1, weight=1)
-        task.columnconfigure(2, minsize=88)
-        ttk.Label(task, text="任务准备", style="Section.TLabel").grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 10))
-        drop = ttk.Frame(task, style="Card.TFrame", padding=(16, 16))
-        drop.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(0, 12))
+        task.columnconfigure(2, minsize=94)
+        self._section_title(task, "task", "任务准备").grid(row=0, column=0, columnspan=3, sticky="w", padx=16, pady=(14, 10))
+        drop = ctk.CTkFrame(task, fg_color="#f8fbfe", corner_radius=9, border_width=1, border_color="#b9cbe0", height=124, cursor="hand2")
+        drop.grid(row=1, column=0, columnspan=3, sticky="ew", padx=16, pady=(0, 12))
+        drop.grid_propagate(False)
         drop.columnconfigure(0, weight=1)
-        ttk.Label(drop, text="点击选择文件或拖拽文件到窗口", style="Muted.TLabel", anchor="center").grid(row=0, column=0, sticky="ew")
-        ttk.Button(drop, text="选择文件", command=self.choose_file).grid(row=1, column=0, pady=(10, 0))
-        self._form_row(task, 2, "源文件", self.input_path, self.choose_file, "选择")
-        self._form_row(task, 3, "输出目录", self.output_dir, self.choose_output_dir, "浏览")
-        ttk.Label(task, text="质检方案", style="Surface.TLabel", width=10, anchor="e").grid(row=4, column=0, sticky="e", padx=(0, 10), pady=7)
-        self.scheme_combo = ttk.Combobox(task, textvariable=self.scheme_var, state="readonly")
-        self.scheme_combo.grid(row=4, column=1, sticky="ew", pady=7)
-        ttk.Button(task, text="方案管理", command=self.open_scheme_config).grid(row=4, column=2, sticky="ew", padx=(10, 0), pady=7)
-        ttk.Label(task, text="质检人员", style="Surface.TLabel", width=10, anchor="e").grid(row=5, column=0, sticky="e", padx=(0, 10), pady=7)
-        ttk.Entry(task, textvariable=self.inspector).grid(row=5, column=1, sticky="ew", pady=7)
-        action_row = ttk.Frame(task, style="Surface.TFrame")
-        action_row.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(12, 0))
-        action_row.columnconfigure(0, weight=1)
-        action_row.columnconfigure(1, weight=1)
-        self.run_button = ttk.Button(action_row, text="开始质检", command=self.run, style="Primary.TButton")
-        self.run_button.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        ttk.Button(action_row, text="清空文件", command=self.clear_file).grid(row=0, column=1, sticky="ew", padx=(8, 0))
-        self.drop_tip = ttk.Label(task, text="", style="Muted.TLabel")
+        ctk.CTkLabel(drop, text="", image=ui_icon("file", "#7e92aa", 28)).grid(row=0, column=0, pady=(16, 0))
+        ctk.CTkLabel(drop, textvariable=self.drop_title_var, text_color="#2d4663", font=(FONT, 11, "bold")).grid(row=1, column=0, pady=(2, 0))
+        ctk.CTkLabel(drop, text="支持格式：.xlsx  .xlsm    每次处理一个文件", text_color="#8090a5", font=(FONT, 9)).grid(row=2, column=0, pady=(2, 12))
+        for child in (drop, *drop.winfo_children()):
+            child.bind("<Button-1>", lambda _event: self.choose_file())
 
-        result = ttk.Frame(main, style="Surface.TFrame", padding=(14, 12))
-        result.grid(row=0, column=1, sticky="nsew", pady=(0, 10))
+        self._form_row(task, 2, "输出目录", self.output_dir, self.choose_output_dir, "浏览")
+        self._field_label(task, "质检方案").grid(row=3, column=0, sticky="e", padx=(16, 10), pady=7)
+        self.scheme_combo = ctk.CTkComboBox(task, variable=self.scheme_var, values=[""], state="readonly", height=36, corner_radius=7, border_color=BORDER, button_color="#edf4f8", button_hover_color="#ddebf1", text_color=TEXT, dropdown_fg_color=SURFACE)
+        self.scheme_combo.grid(row=3, column=1, sticky="ew", pady=7)
+        self._button(task, "方案管理", self.open_scheme_config, width=94, icon="settings").grid(row=3, column=2, sticky="ew", padx=(10, 16), pady=7)
+        self._field_label(task, "质检人员").grid(row=4, column=0, sticky="e", padx=(16, 10), pady=7)
+        inspector_row = ctk.CTkFrame(task, fg_color="transparent")
+        inspector_row.grid(row=4, column=1, columnspan=2, sticky="ew", padx=(0, 16), pady=7)
+        inspector_row.columnconfigure(0, weight=1)
+        self.inspector_combo = ctk.CTkComboBox(inspector_row, variable=self.inspector, values=[""], height=36, corner_radius=7, border_color=BORDER, button_color="#edf4f8", button_hover_color="#ddebf1", text_color=TEXT, dropdown_fg_color=SURFACE)
+        self.inspector_combo.grid(row=0, column=0, sticky="ew")
+        ctk.CTkLabel(inspector_row, text="用于结果记录与报送内容标注", text_color="#8795a8", font=(FONT, 9)).grid(row=0, column=1, padx=(10, 0))
+        action_row = ctk.CTkFrame(task, fg_color="transparent")
+        action_row.grid(row=5, column=0, columnspan=3, sticky="ew", padx=16, pady=(12, 16))
+        action_row.columnconfigure(0, weight=7)
+        action_row.columnconfigure(1, weight=3)
+        self.run_button = self._button(action_row, "开始质检", self.run, primary=True, height=44, font=(FONT, 12, "bold"), icon="play")
+        self.run_button.grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        self._button(action_row, "清空文件", self.clear_file, height=44, icon="trash").grid(row=0, column=1, sticky="ew", padx=(6, 0))
+
+        result = self._panel(main)
+        result.grid(row=0, column=1, sticky="nsew", padx=(7, 0), pady=(0, 10))
         result.columnconfigure(0, weight=1)
-        top_result = ttk.Frame(result, style="Surface.TFrame")
-        top_result.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        top_result = ctk.CTkFrame(result, fg_color="transparent")
+        top_result.grid(row=0, column=0, sticky="ew", padx=16, pady=(14, 10))
         top_result.columnconfigure(0, weight=1)
-        ttk.Label(top_result, text="本次质检结果", style="Section.TLabel").grid(row=0, column=0, sticky="w")
+        self._section_title(top_result, "chart", "本次质检结果").grid(row=0, column=0, sticky="w")
         self.task_time_var = tk.StringVar(value="任务时间：-")
-        ttk.Label(top_result, textvariable=self.task_time_var, style="Muted.TLabel").grid(row=0, column=1, sticky="e")
-        self.metrics_frame = ttk.Frame(result, style="Surface.TFrame")
-        self.metrics_frame.grid(row=1, column=0, sticky="ew", pady=(0, 12))
+        ctk.CTkLabel(top_result, textvariable=self.task_time_var, text_color="#8795a8", font=(FONT, 9)).grid(row=0, column=1, sticky="e")
+        self.metrics_frame = ctk.CTkFrame(result, fg_color="transparent")
+        self.metrics_frame.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 12))
         self._render_metric_cards([
             {"title": "月度专项", "key": "special", "value": "0"},
             {"title": "舆情提醒", "key": "reminder", "value": "0"},
             {"title": "无效舆情", "key": "invalid", "value": "0"},
             {"title": "超时预警", "key": "overtime", "value": "0", "danger": True},
         ])
-        report_head = ttk.Frame(result, style="Surface.TFrame")
-        report_head.grid(row=2, column=0, sticky="ew")
+        report_head = ctk.CTkFrame(result, fg_color="transparent")
+        report_head.grid(row=2, column=0, sticky="ew", padx=16)
         report_head.columnconfigure(0, weight=1)
-        ttk.Label(report_head, text="报送内容", style="Section.TLabel").grid(row=0, column=0, sticky="w")
-        self.copy_button = ttk.Button(report_head, text="复制报送内容", command=self.copy_report, state="disabled")
-        self.copy_button.grid(row=0, column=1, sticky="e")
-        self.report_preview = scrolledtext.ScrolledText(result, height=4, wrap="word", relief="solid", borderwidth=1)
-        self.report_preview.grid(row=3, column=0, sticky="ew", pady=(8, 0))
+        self._section_title(report_head, "report", "报送内容").grid(row=0, column=0, sticky="w")
+        self.copy_button = self._button(
+            report_head,
+            "复制报送内容",
+            self.copy_report,
+            primary=True,
+            width=148,
+            state="disabled",
+            icon="copy",
+        )
+        self.copy_button.grid(row=0, column=1, rowspan=2, sticky="e")
+        ctk.CTkLabel(report_head, text="已根据本次质检结果生成报送内容，可一键复制用于报送。", text_color="#7b8ba0", font=(FONT, 9)).grid(row=1, column=0, sticky="w", pady=(3, 0))
+        self.report_preview = ctk.CTkTextbox(result, height=72, corner_radius=8, border_width=1, border_color="#d4dfeb", fg_color="#fbfdff", text_color="#263b53", wrap="word", font=(FONT, 10))
+        self.report_preview.grid(row=3, column=0, sticky="ew", padx=16, pady=(8, 16))
         self.report_preview.insert("1.0", "处理完成后将在这里显示日报送内容。")
         self.report_preview.configure(state="disabled")
 
-        logs = ttk.Notebook(main)
+        logs = ctk.CTkTabview(main, fg_color=SURFACE, segmented_button_fg_color="#edf3f8", segmented_button_selected_color=SURFACE, segmented_button_selected_hover_color=SURFACE, segmented_button_unselected_color="#edf3f8", segmented_button_unselected_hover_color="#e1ebf3", text_color=TEXT, corner_radius=10, border_width=1, border_color="#d8e3ed")
         logs.grid(row=1, column=0, columnspan=2, sticky="nsew")
-        log_tab = ttk.Frame(logs, padding=(10, 10))
-        report_tab = ttk.Frame(logs, padding=(10, 10))
-        alert_tab = ttk.Frame(logs, padding=(10, 10))
-        logs.add(log_tab, text="处理日志")
-        logs.add(report_tab, text="质检报送")
-        logs.add(alert_tab, text="校验提醒")
+        logs.add("处理日志")
+        logs.add("质检报送")
+        logs.add("校验提醒")
+        for tab_name, icon_name in (("处理日志", "log"), ("质检报送", "report"), ("校验提醒", "alert")):
+            try:
+                logs._segmented_button._buttons_dict[tab_name].configure(
+                    image=ui_icon(icon_name, "#1766a3", 15), compound="left"
+                )
+            except (AttributeError, KeyError, tk.TclError):
+                pass
+        log_tab = logs.tab("处理日志")
+        report_tab = logs.tab("质检报送")
+        alert_tab = logs.tab("校验提醒")
         log_tab.columnconfigure(0, weight=1)
         log_tab.rowconfigure(1, weight=1)
-        log_tools = ttk.Frame(log_tab)
+        log_tools = ctk.CTkFrame(log_tab, fg_color="transparent")
         log_tools.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         log_tools.columnconfigure(0, weight=1)
-        ttk.Button(log_tools, text="清空日志", command=self.clear_log).grid(row=0, column=1, sticky="e")
+        self._button(log_tools, "清空日志", self.clear_log, width=92, height=30).grid(row=0, column=1, sticky="e")
         self.log = self._make_log_table(log_tab, row=1)
         report_tab.columnconfigure(0, weight=1)
         report_tab.rowconfigure(0, weight=1)
-        self.report_detail = scrolledtext.ScrolledText(report_tab, wrap="word")
+        self.report_detail = ctk.CTkTextbox(report_tab, corner_radius=8, border_width=1, border_color="#e1e9f1", fg_color=SURFACE, text_color="#263b53", wrap="word", font=(FONT, 10))
         self.report_detail.grid(row=0, column=0, sticky="nsew")
         self.report_detail.configure(state="disabled")
         alert_tab.columnconfigure(0, weight=1)
         alert_tab.rowconfigure(1, weight=1)
-        alert_tools = ttk.Frame(alert_tab)
+        alert_tools = ctk.CTkFrame(alert_tab, fg_color="transparent")
         alert_tools.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         alert_tools.columnconfigure(0, weight=1)
-        ttk.Button(alert_tools, text="清空日志", command=self.clear_log).grid(row=0, column=1, sticky="e")
+        self._button(alert_tools, "清空日志", self.clear_log, width=92, height=30).grid(row=0, column=1, sticky="e")
         self.alert_log = self._make_log_table(alert_tab, row=1)
 
-        footer = ttk.Frame(self, padding=(18, 0, 18, 10))
-        footer.grid(row=3, column=0, sticky="ew")
+        footer = ctk.CTkFrame(self, fg_color="#f2f8fc", corner_radius=0, height=34)
+        footer.grid(row=2, column=0, sticky="ew")
         footer.columnconfigure(1, weight=1)
-        ttk.Label(footer, textvariable=self.status).grid(row=0, column=0, sticky="w")
+        self.status.set("就绪")
+        ctk.CTkLabel(footer, textvariable=self.status, text_color="#42566e", font=(FONT, 9)).grid(row=0, column=0, sticky="w", padx=18)
         self.footer_scheme_var = tk.StringVar(value="当前方案：-")
-        ttk.Label(footer, textvariable=self.footer_scheme_var).grid(row=0, column=1, sticky="e")
+        self.footer_time_var = tk.StringVar(value="时间：" + datetime.now().strftime("%Y-%m-%d %H:%M"))
+        ctk.CTkLabel(footer, textvariable=self.footer_scheme_var, text_color="#596b82", font=(FONT, 9)).grid(row=0, column=1, sticky="e")
+        ctk.CTkLabel(footer, text="  |  ", text_color="#a4afbd").grid(row=0, column=2)
+        ctk.CTkLabel(footer, textvariable=self.footer_time_var, text_color="#596b82", font=(FONT, 9)).grid(row=0, column=3, sticky="e", padx=(0, 18))
         self._log("请选择源文件后开始质检。")
 
+    def _panel(self, parent):
+        return ctk.CTkFrame(parent, fg_color=SURFACE, corner_radius=10, border_width=1, border_color="#dce6ef")
+
+    @staticmethod
+    def _section_title(parent, icon, text):
+        return ctk.CTkLabel(
+            parent,
+            text=text,
+            image=ui_icon(icon, "#1766a3", 19),
+            compound="left",
+            text_color="#14345f",
+            font=(FONT, 13, "bold"),
+        )
+
+    @staticmethod
+    def _field_label(parent, text):
+        return ctk.CTkLabel(parent, text=text, text_color="#304057", width=72, anchor="e", font=(FONT, 10, "bold"))
+
+    @staticmethod
+    def _button(parent, text, command, primary=False, width=100, height=34, font=None, state="normal", icon=None):
+        return ctk.CTkButton(
+            parent,
+            text=text,
+            command=command,
+            width=width,
+            height=height,
+            corner_radius=8,
+            fg_color=TEAL if primary else SURFACE,
+            hover_color="#07888b" if primary else "#f1f6fa",
+            text_color="#ffffff" if primary else "#194a75",
+            border_width=0 if primary else 1,
+            border_color="#c9d7e6",
+            font=font or (FONT, 10, "bold"),
+            image=ui_icon(icon, "#ffffff" if primary else "#1766a3", 16) if icon else None,
+            compound="left",
+            state=state,
+        )
+
     def _form_row(self, parent, row, label, var, command, button_text):
-        ttk.Label(parent, text=label, style="Surface.TLabel", width=10, anchor="e").grid(row=row, column=0, sticky="e", padx=(0, 10), pady=7)
-        ttk.Entry(parent, textvariable=var).grid(row=row, column=1, sticky="ew", pady=7)
-        ttk.Button(parent, text=button_text, command=command).grid(row=row, column=2, sticky="ew", padx=(10, 0), pady=7)
+        self._field_label(parent, label).grid(row=row, column=0, sticky="e", padx=(16, 10), pady=7)
+        ctk.CTkEntry(parent, textvariable=var, height=36, corner_radius=7, border_color=BORDER, fg_color=SURFACE, text_color=TEXT).grid(row=row, column=1, sticky="ew", pady=7)
+        self._button(parent, button_text, command, width=94).grid(row=row, column=2, sticky="ew", padx=(10, 16), pady=7)
 
     def _render_metric_cards(self, cards):
         for widget in self.metrics_frame.winfo_children():
             widget.destroy()
         self.metric_vars = {}
+        self.metric_detail_vars = {}
         count = max(1, len(cards))
         for idx in range(count):
             self.metrics_frame.columnconfigure(idx, weight=1, uniform="metric")
@@ -244,39 +579,39 @@ class ReviewTool(BaseTk):
                 card.get("key", f"metric_{idx}"),
                 card.get("value", "0"),
                 card.get("danger") is True,
+                card.get("involved"),
+                card.get("attention"),
             )
 
-    def _metric_card(self, parent, col, title, key, value, danger=False):
-        frame = ttk.Frame(parent, style="DangerCard.TFrame" if danger else "Card.TFrame", padding=(12, 12))
-        frame.grid(row=0, column=col, sticky="nsew", padx=(0 if col == 0 else 8, 0))
-        label_style = "DangerMetric.TLabel" if danger else "Metric.TLabel"
-        surface_style = "DangerMuted.TLabel" if danger else "CardMuted.TLabel"
+    def _metric_card(self, parent, col, title, key, value, danger=False, involved=None, attention=None):
+        colors = [
+            ("#eaf5ff", "#1474d4", "monthly"),
+            ("#e9faf6", "#008b8e", "bell"),
+            ("#f2f5f8", "#425168", "invalid"),
+            ("#fff0f1", "#e0444e", "clock"),
+        ]
+        bg, fg, icon = colors[3 if danger else col % 3]
+        frame = ctk.CTkFrame(parent, fg_color=bg, corner_radius=9, border_width=0)
+        frame.grid(row=0, column=col, sticky="nsew", padx=(0 if col == 0 else 6, 0))
+        frame.grid_columnconfigure(0, weight=1)
         self.metric_vars[key] = tk.StringVar(value=str(value))
-        ttk.Label(frame, text=title, style=surface_style, anchor="center").grid(row=0, column=0, sticky="ew")
-        ttk.Label(frame, textvariable=self.metric_vars[key], style=label_style, anchor="center").grid(row=1, column=0, sticky="ew", pady=(7, 2))
-        ttk.Label(frame, text="命中条数", style=surface_style, anchor="center").grid(row=2, column=0, sticky="ew")
+        detail_var = tk.StringVar(value=f"涉及条数：{value if involved is None else involved}\n需关注：{0 if attention is None else attention}")
+        self.metric_detail_vars[key] = detail_var
+        card_head = ctk.CTkFrame(frame, fg_color="transparent")
+        card_head.grid(row=0, column=0, sticky="ew", padx=12, pady=(10, 0))
+        card_head.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(card_head, text="", image=ui_icon(icon, fg, 20), width=24).grid(row=0, column=0, padx=(0, 6))
+        ctk.CTkLabel(card_head, text=title, text_color="#304057", font=(FONT, 10, "bold"), anchor="w").grid(row=0, column=1, sticky="ew")
+        ctk.CTkLabel(card_head, text="", image=ui_icon("info", "#8b9bb0", 13), width=16).grid(row=0, column=2)
+        ctk.CTkLabel(frame, textvariable=self.metric_vars[key], text_color=fg, font=(FONT, 25, "bold")).grid(row=1, column=0, sticky="ew", padx=12, pady=(5, 1))
+        ctk.CTkLabel(frame, textvariable=detail_var, text_color="#66758a", font=(FONT, 9), justify="center").grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 10))
 
     def _make_log_table(self, parent, row=0):
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(row, weight=1)
-        frame = ttk.Frame(parent)
-        frame.grid(row=row, column=0, sticky="nsew")
-        frame.columnconfigure(0, weight=1)
-        frame.rowconfigure(0, weight=1)
-        tree = ttk.Treeview(frame, columns=("time", "status", "content"), show="headings")
-        tree.heading("time", text="时间")
-        tree.heading("status", text="状态")
-        tree.heading("content", text="内容")
-        tree.column("time", width=90, minwidth=80, anchor="center", stretch=False)
-        tree.column("status", width=90, minwidth=80, anchor="center", stretch=False)
-        tree.column("content", width=760, minwidth=300, anchor="w")
-        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
-        tree.configure(yscrollcommand=scrollbar.set)
-        tree.grid(row=0, column=0, sticky="nsew")
-        scrollbar.grid(row=0, column=1, sticky="ns")
-        tree.tag_configure("red", foreground="#c00000")
-        tree.tag_configure("success", foreground="#12805c")
-        return tree
+        table = ModernLogTable(parent)
+        table.grid(row=row, column=0, sticky="nsew")
+        return table
 
     def _enable_drop(self):
         if not DND_FILES:
@@ -293,6 +628,7 @@ class ReviewTool(BaseTk):
             messagebox.showwarning("提示", "请拖入 .xlsx 或 .xlsm 文件")
             return
         self.input_path.set(str(path))
+        self.drop_title_var.set(path.name)
         self.status.set("已选择源文件")
 
     def choose_file(self):
@@ -302,6 +638,7 @@ class ReviewTool(BaseTk):
         )
         if path:
             self.input_path.set(path)
+            self.drop_title_var.set(Path(path).name)
             self.status.set("已选择源文件")
 
     def choose_output_dir(self):
@@ -312,6 +649,7 @@ class ReviewTool(BaseTk):
 
     def clear_file(self):
         self.input_path.set("")
+        self.drop_title_var.set("点击选择文件或拖拽文件到此处")
         self.status.set("已清空源文件")
 
     def refresh_schemes(self):
@@ -319,14 +657,15 @@ class ReviewTool(BaseTk):
         schemes = config.get("schemes") or {DEFAULT_SCHEME_ID: DEFAULT_SCHEME}
         active_id = config.get("active_scheme_id") or DEFAULT_SCHEME_ID
         self.scheme_options = [(scheme_id, scheme.get("name") or scheme_id) for scheme_id, scheme in schemes.items()]
-        self.scheme_combo["values"] = [name for _scheme_id, name in self.scheme_options]
+        names = [name for _scheme_id, name in self.scheme_options]
+        self.scheme_combo.configure(values=names or [""])
         selected_index = 0
         for idx, (scheme_id, _name) in enumerate(self.scheme_options):
             if scheme_id == active_id:
                 selected_index = idx
                 break
         if self.scheme_options:
-            self.scheme_combo.current(selected_index)
+            self.scheme_combo.set(self.scheme_options[selected_index][1])
         if hasattr(self, "footer_scheme_var"):
             self.footer_scheme_var.set("当前方案：" + (self.scheme_var.get() or "-"))
 
@@ -415,8 +754,8 @@ class ReviewTool(BaseTk):
             return
 
         self.last_report_text = ""
-        self.copy_button.config(state="disabled")
-        self.run_button.config(state="disabled")
+        self.copy_button.configure(state="disabled")
+        self.run_button.configure(state="disabled")
         self.status.set("正在处理，请稍候...")
         self.task_time_var.set("任务时间：" + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         self._set_report_text("正在处理，请稍候...")
@@ -449,10 +788,10 @@ class ReviewTool(BaseTk):
         self.after(0, self._log, text)
 
     def _run_success(self, result):
-        self.run_button.config(state="normal")
+        self.run_button.configure(state="normal")
         self.status.set("处理完成")
         self.last_report_text = result["submission_text"]
-        self.copy_button.config(state="normal")
+        self.copy_button.configure(state="normal")
         cards = []
         for idx, item in enumerate(result.get("plan_results") or []):
             plan = item.get("plan") or {}
@@ -465,8 +804,22 @@ class ReviewTool(BaseTk):
                 title = "舆情提醒"
             elif plan.get("role") == "invalid_review":
                 title = "无效舆情"
-            cards.append({"title": title, "key": f"plan_{idx}", "value": len(item.get("rows") or [])})
-        cards.append({"title": "超时预警", "key": "overtime", "value": result["overtime_count"], "danger": True})
+            row_count = len(item.get("rows") or [])
+            cards.append({
+                "title": title,
+                "key": f"plan_{idx}",
+                "value": row_count,
+                "involved": row_count,
+                "attention": len(item.get("overtime_ids") or []),
+            })
+        cards.append({
+            "title": "超时预警",
+            "key": "overtime",
+            "value": result["overtime_count"],
+            "involved": result["overtime_count"],
+            "attention": result["overtime_count"],
+            "danger": True,
+        })
         self._render_metric_cards(cards)
         self._log("专项质检：" + result["special_name"])
         self._log(f"专项命中：{result['special_count']} 条")
@@ -497,7 +850,7 @@ class ReviewTool(BaseTk):
             messagebox.showinfo("完成", "处理完成，未导出质检明细。")
 
     def _run_failed(self, exc):
-        self.run_button.config(state="normal")
+        self.run_button.configure(state="normal")
         self.status.set("处理失败")
         self._log("处理失败：" + str(exc), "red")
         messagebox.showerror("处理失败", str(exc))
@@ -556,16 +909,25 @@ class BackupRestoreWindow(tk.Toplevel):
 
     def _build_ui(self):
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(1, weight=1)
-        ttk.Label(self, text="选择一个历史备份，恢复后会先自动备份当前配置。", foreground="#546179").grid(
-            row=0, column=0, sticky="w", padx=14, pady=(14, 8)
+        self.rowconfigure(0, weight=1)
+        card = ctk.CTkFrame(self, fg_color=SURFACE, corner_radius=10, border_width=1, border_color=BORDER)
+        card.grid(row=0, column=0, sticky="nsew", padx=14, pady=14)
+        card.columnconfigure(0, weight=1)
+        card.rowconfigure(2, weight=1)
+        ui_label(card, text="配置备份", style="Section.TLabel").grid(row=0, column=0, sticky="w", padx=16, pady=(14, 0))
+        ui_label(card, text="选择一个历史备份，恢复前会自动保存当前配置。", foreground="#546179").grid(
+            row=1, column=0, sticky="w", padx=16, pady=(4, 8)
         )
-        self.listbox = tk.Listbox(self, exportselection=False)
-        self.listbox.grid(row=1, column=0, sticky="nsew", padx=14, pady=(0, 10))
-        actions = ttk.Frame(self, padding=(14, 0, 14, 14))
-        actions.grid(row=2, column=0, sticky="ew")
-        ttk.Button(actions, text="刷新", command=self.refresh).pack(side="left")
-        ttk.Button(actions, text="恢复选中备份", command=self.restore_selected).pack(side="right")
+        list_shell = ctk.CTkFrame(card, fg_color=SURFACE, corner_radius=9, border_width=1, border_color=BORDER)
+        list_shell.grid(row=2, column=0, sticky="nsew", padx=16, pady=(0, 10))
+        list_shell.columnconfigure(0, weight=1)
+        list_shell.rowconfigure(0, weight=1)
+        self.listbox = ui_listbox(list_shell, exportselection=False)
+        self.listbox.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        actions = ctk.CTkFrame(card, fg_color="transparent")
+        actions.grid(row=3, column=0, sticky="ew", padx=16, pady=(0, 16))
+        ui_button(actions, text="刷新", command=self.refresh).pack(side="left")
+        ui_button(actions, text="恢复选中备份", command=self.restore_selected, primary=True, width=140).pack(side="right")
 
     def refresh(self):
         self.listbox.delete(0, "end")
@@ -660,50 +1022,58 @@ class SchemeConfigWindow(tk.Toplevel):
         self.columnconfigure(1, weight=1)
         self.rowconfigure(0, weight=1)
 
-        left = ttk.Frame(self, padding=(14, 14), style="Surface.TFrame")
-        left.grid(row=0, column=0, sticky="ns")
-        ttk.Label(left, text="质检方案", style="Section.TLabel").pack(anchor="w")
-        self.scheme_list = tk.Listbox(left, height=14, exportselection=False, width=20)
-        self.scheme_list.configure(background="#ffffff", foreground="#203047", selectbackground="#0c75c8", selectforeground="#ffffff", relief="flat")
-        self.scheme_list.pack(fill="y", expand=True, pady=(8, 10))
+        left = ctk.CTkFrame(self, fg_color=SURFACE, corner_radius=10, border_width=1, border_color=BORDER)
+        left.grid(row=0, column=0, sticky="ns", padx=(14, 7), pady=14)
+        ctk.CTkLabel(left, text="质检方案", text_color=TEXT, font=(FONT, 13, "bold")).pack(anchor="w", padx=14, pady=(14, 0))
+        scheme_shell = ctk.CTkFrame(left, fg_color=SURFACE, corner_radius=8, border_width=1, border_color=BORDER)
+        scheme_shell.pack(fill="both", expand=True, padx=14, pady=(8, 10))
+        self.scheme_list = ui_listbox(scheme_shell, height=14, exportselection=False, width=20)
+        self.scheme_list.pack(fill="both", expand=True, padx=8, pady=8)
         self.scheme_list.bind("<<ListboxSelect>>", self.on_scheme_select)
-        ttk.Button(left, text="新增方案", command=self.add_scheme).pack(fill="x", pady=(0, 6))
-        ttk.Button(left, text="复制方案", command=self.copy_scheme).pack(fill="x", pady=(0, 6))
-        ttk.Button(left, text="删除方案", command=self.delete_scheme).pack(fill="x")
+        ui_button(left, text="新增方案", command=self.add_scheme).pack(fill="x", padx=14, pady=(0, 6))
+        ui_button(left, text="复制方案", command=self.copy_scheme).pack(fill="x", padx=14, pady=(0, 6))
+        ui_button(left, text="删除方案", command=self.delete_scheme).pack(fill="x", padx=14, pady=(0, 14))
 
-        right = ttk.Frame(self, padding=(14, 14, 14, 14), style="Surface.TFrame")
-        right.grid(row=0, column=1, sticky="nsew")
+        right = ctk.CTkFrame(self, fg_color=SURFACE, corner_radius=10, border_width=1, border_color=BORDER)
+        right.grid(row=0, column=1, sticky="nsew", padx=(7, 14), pady=14)
         right.columnconfigure(0, weight=1)
         right.rowconfigure(1, weight=1)
 
-        top = ttk.Frame(right)
-        top.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        top = ctk.CTkFrame(right, fg_color="transparent")
+        top.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 10))
         top.columnconfigure(1, weight=1)
         top.columnconfigure(3, weight=1)
-        ttk.Label(top, text="方案名称").grid(row=0, column=0, sticky="e", padx=(0, 8))
-        ttk.Entry(top, textvariable=self.name_var).grid(row=0, column=1, sticky="ew")
-        ttk.Label(top, text="配置版本").grid(row=0, column=2, sticky="e", padx=(10, 8))
-        ttk.Entry(top, textvariable=self.config_version_var).grid(row=0, column=3, sticky="ew")
-        ttk.Label(top, text="配置备注").grid(row=1, column=0, sticky="e", padx=(0, 8), pady=(8, 0))
-        ttk.Entry(top, textvariable=self.config_remark_var).grid(row=1, column=1, columnspan=3, sticky="ew", pady=(8, 0))
-        ttk.Button(top, text="读取源文件表头", command=self.load_headers).grid(row=0, column=4, rowspan=2, padx=(10, 0))
+        ui_label(top, text="方案名称").grid(row=0, column=0, sticky="e", padx=(0, 8))
+        ui_entry(top, textvariable=self.name_var).grid(row=0, column=1, sticky="ew")
+        ui_label(top, text="配置版本").grid(row=0, column=2, sticky="e", padx=(10, 8))
+        ui_entry(top, textvariable=self.config_version_var).grid(row=0, column=3, sticky="ew")
+        ui_label(top, text="配置备注").grid(row=1, column=0, sticky="e", padx=(0, 8), pady=(8, 0))
+        ui_entry(top, textvariable=self.config_remark_var).grid(row=1, column=1, columnspan=3, sticky="ew", pady=(8, 0))
+        ui_button(top, text="读取源文件表头", command=self.load_headers, width=140).grid(row=0, column=4, rowspan=2, padx=(10, 0))
 
-        notebook = ttk.Notebook(right)
-        notebook.grid(row=1, column=0, sticky="nsew")
-
-        fields_tab = ttk.Frame(notebook, padding=(12, 12))
-        values_tab = ttk.Frame(notebook, padding=(12, 12))
-        company_tab = ttk.Frame(notebook, padding=(12, 12))
-        notebook.add(fields_tab, text="字段映射")
-        notebook.add(values_tab, text="质检计划")
-        notebook.add(company_tab, text="公司名单")
+        notebook = ctk.CTkTabview(
+            right,
+            fg_color="#f8fbfd",
+            corner_radius=9,
+            border_width=1,
+            border_color="#dce6ef",
+            segmented_button_selected_color=TEAL,
+            segmented_button_selected_hover_color=TEAL_HOVER,
+        )
+        notebook.grid(row=1, column=0, sticky="nsew", padx=16)
+        notebook.add("字段映射")
+        notebook.add("质检计划")
+        notebook.add("公司名单")
+        fields_tab = notebook.tab("字段映射")
+        values_tab = notebook.tab("质检计划")
+        company_tab = notebook.tab("公司名单")
 
         fields_tab.columnconfigure(0, weight=1)
         fields_tab.rowconfigure(1, weight=1)
-        field_actions = ttk.Frame(fields_tab)
+        field_actions = ctk.CTkFrame(fields_tab, fg_color="transparent")
         field_actions.grid(row=0, column=0, sticky="ew", pady=(0, 8))
-        ttk.Button(field_actions, text="新增字段", command=self.add_field_row).pack(side="left")
-        ttk.Label(
+        ui_button(field_actions, text="新增字段", command=self.add_field_row).pack(side="left")
+        ui_label(
             field_actions,
             text="用途决定程序逻辑，显示名称和列可按源表调整；专项关键词匹配列可填多个，如 C,K。",
             foreground="#546179",
@@ -712,10 +1082,10 @@ class SchemeConfigWindow(tk.Toplevel):
 
         values_tab.columnconfigure(0, weight=1)
         values_tab.rowconfigure(1, weight=1)
-        value_actions = ttk.Frame(values_tab)
+        value_actions = ctk.CTkFrame(values_tab, fg_color="transparent")
         value_actions.grid(row=0, column=0, sticky="ew", pady=(0, 8))
-        ttk.Button(value_actions, text="新增质检计划", command=self.add_plan_row).pack(side="left")
-        ttk.Label(
+        ui_button(value_actions, text="新增质检计划", command=self.add_plan_row, width=130).pack(side="left")
+        ui_label(
             value_actions,
             text="每个计划可单独配置筛选方式、导出、抽样和超时检查。",
             foreground="#546179",
@@ -724,18 +1094,18 @@ class SchemeConfigWindow(tk.Toplevel):
 
         company_tab.columnconfigure(0, weight=1)
         company_tab.rowconfigure(0, weight=1)
-        self.company_text = scrolledtext.ScrolledText(company_tab, height=18, wrap="word")
+        self.company_text = ctk.CTkTextbox(company_tab, height=360, wrap="word", corner_radius=8, border_width=1, border_color=BORDER, fg_color=SURFACE, text_color=TEXT)
         self.company_text.grid(row=0, column=0, sticky="nsew")
-        ttk.Label(company_tab, text="每行一个公司名称；公司筛选列的值在名单中才会保留。", foreground="#546179").grid(
+        ui_label(company_tab, text="每行一个公司名称；公司筛选列的值在名单中才会保留。", foreground="#546179").grid(
             row=1, column=0, sticky="w", pady=(8, 0)
         )
 
-        actions = ttk.Frame(right)
-        actions.grid(row=2, column=0, sticky="ew", pady=(12, 0))
-        ttk.Button(actions, text="保存当前方案", command=self.save_current_scheme).pack(side="left")
-        ttk.Button(actions, text="设为默认方案", command=self.set_active_scheme).pack(side="left", padx=8)
-        ttk.Button(actions, text="恢复当前方案默认值", command=self.reset_current_scheme).pack(side="left")
-        ttk.Button(actions, text="保存全部并关闭", command=self.save_all_and_close).pack(side="right")
+        actions = ctk.CTkFrame(right, fg_color="transparent")
+        actions.grid(row=2, column=0, sticky="ew", padx=16, pady=(12, 16))
+        ui_button(actions, text="保存当前方案", command=self.save_current_scheme, width=130).pack(side="left")
+        ui_button(actions, text="设为默认方案", command=self.set_active_scheme, width=130).pack(side="left", padx=8)
+        ui_button(actions, text="恢复当前方案默认值", command=self.reset_current_scheme, width=170).pack(side="left")
+        ui_button(actions, text="保存全部并关闭", command=self.save_all_and_close, primary=True, width=150).pack(side="right")
 
     def refresh_scheme_list(self):
         self.scheme_list.delete(0, "end")
@@ -915,41 +1285,15 @@ class SchemeConfigWindow(tk.Toplevel):
         messagebox.showinfo("完成", "已读取表头，可在字段映射中选择。")
 
     def _make_scroll_area(self, parent, row):
-        canvas = tk.Canvas(parent, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
-        frame = ttk.Frame(canvas)
+        frame = ctk.CTkScrollableFrame(
+            parent,
+            fg_color="transparent",
+            corner_radius=0,
+            scrollbar_button_color="#bac8d8",
+            scrollbar_button_hover_color="#98abbe",
+        )
         frame.columnconfigure(0, weight=1)
-        frame.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas_window = canvas.create_window((0, 0), window=frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.grid(row=row, column=0, sticky="nsew")
-        scrollbar.grid(row=row, column=1, sticky="ns")
-        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(canvas_window, width=event.width))
-        def _wheel(event):
-            if getattr(event, "num", None) == 4:
-                canvas.yview_scroll(-3, "units")
-            elif getattr(event, "num", None) == 5:
-                canvas.yview_scroll(3, "units")
-            else:
-                canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        def _bind_wheel(_event):
-            canvas.bind_all("<MouseWheel>", _wheel)
-            canvas.bind_all("<Button-4>", _wheel)
-            canvas.bind_all("<Button-5>", _wheel)
-        def _unbind_wheel(_event):
-            canvas.unbind_all("<MouseWheel>")
-            canvas.unbind_all("<Button-4>")
-            canvas.unbind_all("<Button-5>")
-        canvas.bind("<Enter>", _bind_wheel)
-        canvas.bind("<Leave>", _unbind_wheel)
-        frame.bind("<Enter>", _bind_wheel)
-        frame.bind("<Leave>", _unbind_wheel)
-        canvas.bind("<MouseWheel>", _wheel)
-        canvas.bind("<Button-4>", _wheel)
-        canvas.bind("<Button-5>", _wheel)
-        frame.bind("<MouseWheel>", _wheel)
-        frame.bind("<Button-4>", _wheel)
-        frame.bind("<Button-5>", _wheel)
+        frame.grid(row=row, column=0, sticky="nsew")
         return frame
 
     def _field_display(self, key):
@@ -1010,8 +1354,8 @@ class SchemeConfigWindow(tk.Toplevel):
     def add_field_row(self, item=None):
         item = item or {"key": "custom_field", "label": "自定义字段", "column": "", "enabled": True}
         row_index = len(self.field_row_vars)
-        row = ttk.LabelFrame(self.field_rows_frame, text=item.get("label") or "字段", padding=(10, 8))
-        row.grid(row=row_index, column=0, sticky="ew", pady=(0, 8))
+        row = ctk.CTkFrame(self.field_rows_frame, fg_color=SURFACE, corner_radius=8, border_width=1, border_color=BORDER)
+        row.grid(row=row_index, column=0, sticky="ew", padx=(0, 4), pady=(0, 8))
         row.columnconfigure(1, weight=1)
         row.columnconfigure(3, weight=1)
         enabled_var = tk.BooleanVar(value=item.get("enabled", True) is not False)
@@ -1021,15 +1365,15 @@ class SchemeConfigWindow(tk.Toplevel):
         if isinstance(column, list):
             column = ",".join(str(part) for part in column)
         column_var = tk.StringVar(value=str(column))
-        ttk.Checkbutton(row, text="启用", variable=enabled_var).grid(row=0, column=0, sticky="w", padx=(0, 10), pady=3)
-        ttk.Label(row, text="用途").grid(row=0, column=1, sticky="w", pady=3)
-        ttk.Label(row, text="显示名称").grid(row=0, column=3, sticky="w", pady=3)
-        ttk.Combobox(row, textvariable=key_var, values=[self._field_display(key) for key, _ in self.FIELD_OPTIONS], state="readonly").grid(row=1, column=1, sticky="ew", padx=(0, 12), pady=3)
-        ttk.Entry(row, textvariable=label_var).grid(row=1, column=3, sticky="ew", padx=(0, 12), pady=3)
-        ttk.Label(row, text="匹配列 / 字段列").grid(row=2, column=0, columnspan=2, sticky="w", pady=(7, 3))
-        combo = ttk.Combobox(row, textvariable=column_var, values=self._column_choices())
-        combo.grid(row=3, column=0, columnspan=4, sticky="ew", padx=(0, 12), pady=3)
-        ttk.Button(row, text="删除字段", command=lambda: self._delete_dynamic_row(self.field_row_vars, row)).grid(row=3, column=4, sticky="e", pady=3)
+        ui_check(row, text="启用", variable=enabled_var).grid(row=0, column=0, sticky="w", padx=(12, 10), pady=(10, 3))
+        ui_label(row, text="用途").grid(row=0, column=1, sticky="w", pady=(10, 3))
+        ui_label(row, text="显示名称").grid(row=0, column=3, sticky="w", pady=(10, 3))
+        ModernComboBox(row, variable=key_var, values=[self._field_display(key) for key, _ in self.FIELD_OPTIONS], state="readonly").grid(row=1, column=1, sticky="ew", padx=(0, 12), pady=3)
+        ui_entry(row, textvariable=label_var).grid(row=1, column=3, sticky="ew", padx=(0, 12), pady=3)
+        ui_label(row, text="匹配列 / 字段列").grid(row=2, column=0, columnspan=2, sticky="w", padx=(12, 0), pady=(7, 3))
+        combo = ModernComboBox(row, variable=column_var, values=self._column_choices() or [""])
+        combo.grid(row=3, column=0, columnspan=4, sticky="ew", padx=(12, 12), pady=(3, 12))
+        ui_button(row, text="删除字段", command=lambda: self._delete_dynamic_row(self.field_row_vars, row), width=100).grid(row=3, column=4, sticky="e", padx=(0, 12), pady=(3, 12))
         self.field_row_vars.append({"frame": row, "enabled": enabled_var, "key": key_var, "label": label_var, "column": column_var, "combo": combo})
 
     def add_plan_row(self, item=None):
@@ -1049,8 +1393,8 @@ class SchemeConfigWindow(tk.Toplevel):
         sampling = item.get("sampling") or {}
         overtime = item.get("overtime") or {}
         row_index = len(self.plan_row_vars)
-        card = ttk.LabelFrame(self.plan_rows_frame, text=item.get("name") or "质检计划", padding=(10, 8))
-        card.grid(row=row_index, column=0, sticky="ew", pady=(0, 10))
+        card = ctk.CTkFrame(self.plan_rows_frame, fg_color=SURFACE, corner_radius=8, border_width=1, border_color=BORDER)
+        card.grid(row=row_index, column=0, sticky="ew", padx=(0, 4), pady=(0, 10))
         for col in range(4):
             card.columnconfigure(col, weight=1)
 
@@ -1074,69 +1418,69 @@ class SchemeConfigWindow(tk.Toplevel):
         threshold_var = tk.StringVar(value=str(overtime.get("threshold_minutes", 20)))
         id_var = tk.StringVar(value=str(overtime.get("id_column") or "B"))
 
-        header = ttk.Frame(card)
-        header.grid(row=0, column=0, columnspan=4, sticky="ew", pady=(0, 8))
+        header = ctk.CTkFrame(card, fg_color="transparent")
+        header.grid(row=0, column=0, columnspan=4, sticky="ew", padx=12, pady=(12, 8))
         header.columnconfigure(1, weight=1)
-        ttk.Checkbutton(header, text="启用", variable=enabled_var).grid(row=0, column=0, sticky="w", padx=(0, 8))
-        ttk.Entry(header, textvariable=name_var).grid(row=0, column=1, sticky="ew", padx=(0, 8))
-        ttk.Combobox(header, textvariable=match_type_var, values=["按月份专项关键词", "关键词筛选", "条件筛选"], state="readonly", width=18).grid(row=0, column=2, sticky="e", padx=(0, 8))
-        ttk.Checkbutton(header, text="导出工作表", variable=output_var).grid(row=0, column=3, sticky="e", padx=(0, 8))
-        ttk.Button(header, text="删除计划", command=lambda: self._delete_dynamic_row(self.plan_row_vars, card)).grid(row=0, column=4, sticky="e")
+        ui_check(header, text="启用", variable=enabled_var).grid(row=0, column=0, sticky="w", padx=(0, 8))
+        ui_entry(header, textvariable=name_var).grid(row=0, column=1, sticky="ew", padx=(0, 8))
+        ModernComboBox(header, variable=match_type_var, values=["按月份专项关键词", "关键词筛选", "条件筛选"], state="readonly", width=18).grid(row=0, column=2, sticky="e", padx=(0, 8))
+        ui_check(header, text="导出工作表", variable=output_var).grid(row=0, column=3, sticky="e", padx=(0, 8))
+        ui_button(header, text="删除计划", command=lambda: self._delete_dynamic_row(self.plan_row_vars, card), width=100).grid(row=0, column=4, sticky="e")
 
-        ttk.Label(card, text="关键词匹配列").grid(row=1, column=0, sticky="w", pady=(0, 3))
-        ttk.Label(card, text="关键词").grid(row=1, column=1, sticky="w", pady=(0, 3))
-        condition_header = ttk.Frame(card)
-        condition_header.grid(row=1, column=2, columnspan=2, sticky="ew", pady=(0, 3))
-        ttk.Label(condition_header, text="条件筛选").pack(side="left")
-        ttk.Checkbutton(condition_header, text="关键词命中后继续按条件筛选", variable=apply_conditions_var).pack(side="left", padx=(12, 0))
-        col_combo = ttk.Combobox(card, textvariable=columns_var, values=self._column_choices())
-        col_combo.grid(row=2, column=0, sticky="ew", padx=(0, 8), pady=3)
-        keyword_frame = ttk.Frame(card)
+        ui_label(card, text="关键词匹配列").grid(row=1, column=0, sticky="w", padx=(12, 0), pady=(0, 3))
+        ui_label(card, text="关键词").grid(row=1, column=1, sticky="w", pady=(0, 3))
+        condition_header = ctk.CTkFrame(card, fg_color="transparent")
+        condition_header.grid(row=1, column=2, columnspan=2, sticky="ew", padx=(0, 12), pady=(0, 3))
+        ui_label(condition_header, text="条件筛选").pack(side="left")
+        ui_check(condition_header, text="关键词命中后继续按条件筛选", variable=apply_conditions_var).pack(side="left", padx=(12, 0))
+        col_combo = ModernComboBox(card, variable=columns_var, values=self._column_choices() or [""])
+        col_combo.grid(row=2, column=0, sticky="ew", padx=(12, 8), pady=3)
+        keyword_frame = ctk.CTkFrame(card, fg_color="transparent")
         keyword_frame.grid(row=2, column=1, sticky="ew", padx=(0, 8), pady=3)
         keyword_frame.columnconfigure(0, weight=1)
-        ttk.Entry(keyword_frame, textvariable=keywords_var).grid(row=0, column=0, sticky="ew", padx=(0, 6))
-        ttk.Button(keyword_frame, text="填入公司名单", command=lambda: self._fill_company_keywords(keywords_var)).grid(row=0, column=1)
-        ttk.Entry(card, textvariable=conditions_var).grid(row=2, column=2, columnspan=2, sticky="ew", pady=3)
+        ui_entry(keyword_frame, textvariable=keywords_var).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        ui_button(keyword_frame, text="填入公司名单", command=lambda: self._fill_company_keywords(keywords_var), width=120).grid(row=0, column=1)
+        ui_entry(card, textvariable=conditions_var).grid(row=2, column=2, columnspan=2, sticky="ew", padx=(0, 12), pady=3)
 
-        ttk.Label(card, text="多个关键词用逗号、顿号或换行分隔；条件格式：列=值，多条件用分号，例如 R=否;S=是。", foreground="#546179").grid(row=3, column=0, columnspan=4, sticky="w", pady=(0, 6))
+        ui_label(card, text="多个关键词用逗号、顿号或换行分隔；条件格式：列=值，多条件用分号，例如 R=否;S=是。", foreground="#546179").grid(row=3, column=0, columnspan=4, sticky="w", padx=12, pady=(0, 8))
 
-        sample_box = ttk.LabelFrame(card, text="随机抽样", padding=(8, 6))
-        sample_box.grid(row=4, column=0, columnspan=4, sticky="ew", pady=(0, 8))
+        sample_box = ctk.CTkFrame(card, fg_color="#f7fafc", corner_radius=7, border_width=1, border_color="#e2eaf2")
+        sample_box.grid(row=4, column=0, columnspan=4, sticky="ew", padx=12, pady=(0, 8))
         sample_box.columnconfigure(1, weight=1)
         sample_box.columnconfigure(3, weight=1)
-        ttk.Checkbutton(sample_box, text="启用随机抽样", variable=sampling_enabled_var).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 5))
-        ttk.Label(sample_box, text="抽样方式").grid(row=1, column=0, sticky="w", padx=(0, 6), pady=3)
-        ttk.Combobox(sample_box, textvariable=sampling_mode_var, values=["按比例", "按数量"], state="readonly", width=12).grid(row=1, column=1, sticky="ew", padx=(0, 18), pady=3)
-        ttk.Label(sample_box, text="抽样值").grid(row=1, column=2, sticky="w", padx=(0, 6), pady=3)
-        ttk.Entry(sample_box, textvariable=sampling_value_var, width=12).grid(row=1, column=3, sticky="ew", pady=3)
-        ttk.Label(sample_box, text="最少条数").grid(row=2, column=0, sticky="w", padx=(0, 6), pady=3)
-        ttk.Entry(sample_box, textvariable=sampling_min_var, width=12).grid(row=2, column=1, sticky="ew", padx=(0, 18), pady=3)
-        ttk.Label(sample_box, text="按比例：0.2 表示 20%，也可填 20；按数量：抽样值表示固定抽取条数。", foreground="#546179").grid(row=2, column=2, columnspan=2, sticky="w", pady=3)
+        ui_check(sample_box, text="启用随机抽样", variable=sampling_enabled_var).grid(row=0, column=0, columnspan=4, sticky="w", padx=10, pady=(10, 5))
+        ui_label(sample_box, text="抽样方式").grid(row=1, column=0, sticky="w", padx=(10, 6), pady=3)
+        ModernComboBox(sample_box, variable=sampling_mode_var, values=["按比例", "按数量"], state="readonly", width=12).grid(row=1, column=1, sticky="ew", padx=(0, 18), pady=3)
+        ui_label(sample_box, text="抽样值").grid(row=1, column=2, sticky="w", padx=(0, 6), pady=3)
+        ui_entry(sample_box, textvariable=sampling_value_var, width=12).grid(row=1, column=3, sticky="ew", pady=3)
+        ui_label(sample_box, text="最少条数").grid(row=2, column=0, sticky="w", padx=(10, 6), pady=(3, 10))
+        ui_entry(sample_box, textvariable=sampling_min_var, width=12).grid(row=2, column=1, sticky="ew", padx=(0, 18), pady=(3, 10))
+        ui_label(sample_box, text="按比例：0.2 表示 20%，也可填 20；按数量：抽样值表示固定抽取条数。", foreground="#546179").grid(row=2, column=2, columnspan=2, sticky="w", padx=(0, 10), pady=(3, 10))
 
-        overtime_box = ttk.LabelFrame(card, text="超时检查", padding=(8, 6))
-        overtime_box.grid(row=5, column=0, columnspan=4, sticky="ew")
+        overtime_box = ctk.CTkFrame(card, fg_color="#f7fafc", corner_radius=7, border_width=1, border_color="#e2eaf2")
+        overtime_box.grid(row=5, column=0, columnspan=4, sticky="ew", padx=12, pady=(0, 12))
         overtime_box.columnconfigure(1, weight=1)
         overtime_box.columnconfigure(3, weight=1)
         overtime_box.columnconfigure(5, weight=1)
-        ttk.Checkbutton(overtime_box, text="启用超时检查", variable=overtime_enabled_var).grid(row=0, column=0, columnspan=6, sticky="w", pady=(0, 5))
-        ttk.Label(overtime_box, text="计算方式").grid(row=1, column=0, sticky="w", padx=(0, 6), pady=3)
-        ttk.Combobox(overtime_box, textvariable=overtime_mode_var, values=["按起止时间计算", "使用已有处理时长列"], state="readonly", width=18).grid(row=1, column=1, sticky="ew", padx=(0, 14), pady=3)
-        ttk.Label(overtime_box, text="阈值(分钟)").grid(row=1, column=2, sticky="w", padx=(0, 6), pady=3)
-        ttk.Entry(overtime_box, textvariable=threshold_var, width=12).grid(row=1, column=3, sticky="ew", padx=(0, 14), pady=3)
-        ttk.Label(overtime_box, text="编号列").grid(row=1, column=4, sticky="w", padx=(0, 6), pady=3)
-        id_combo = ttk.Combobox(overtime_box, textvariable=id_var, values=self._column_choices(), width=16)
+        ui_check(overtime_box, text="启用超时检查", variable=overtime_enabled_var).grid(row=0, column=0, columnspan=6, sticky="w", padx=10, pady=(10, 5))
+        ui_label(overtime_box, text="计算方式").grid(row=1, column=0, sticky="w", padx=(10, 6), pady=3)
+        ModernComboBox(overtime_box, variable=overtime_mode_var, values=["按起止时间计算", "使用已有处理时长列"], state="readonly", width=18).grid(row=1, column=1, sticky="ew", padx=(0, 14), pady=3)
+        ui_label(overtime_box, text="阈值(分钟)").grid(row=1, column=2, sticky="w", padx=(0, 6), pady=3)
+        ui_entry(overtime_box, textvariable=threshold_var, width=12).grid(row=1, column=3, sticky="ew", padx=(0, 14), pady=3)
+        ui_label(overtime_box, text="编号列").grid(row=1, column=4, sticky="w", padx=(0, 6), pady=3)
+        id_combo = ModernComboBox(overtime_box, variable=id_var, values=self._column_choices() or [""], width=16)
         id_combo.grid(row=1, column=5, sticky="ew", pady=3)
 
-        ttk.Label(overtime_box, text="派发时间列").grid(row=2, column=0, sticky="w", padx=(0, 6), pady=3)
-        send_combo = ttk.Combobox(overtime_box, textvariable=send_var, values=self._column_choices(), width=16)
+        ui_label(overtime_box, text="派发时间列").grid(row=2, column=0, sticky="w", padx=(10, 6), pady=3)
+        send_combo = ModernComboBox(overtime_box, variable=send_var, values=self._column_choices() or [""], width=16)
         send_combo.grid(row=2, column=1, sticky="ew", padx=(0, 14), pady=3)
-        ttk.Label(overtime_box, text="处理时间列").grid(row=2, column=2, sticky="w", padx=(0, 6), pady=3)
-        process_combo = ttk.Combobox(overtime_box, textvariable=process_var, values=self._column_choices(), width=16)
+        ui_label(overtime_box, text="处理时间列").grid(row=2, column=2, sticky="w", padx=(0, 6), pady=3)
+        process_combo = ModernComboBox(overtime_box, variable=process_var, values=self._column_choices() or [""], width=16)
         process_combo.grid(row=2, column=3, sticky="ew", padx=(0, 14), pady=3)
-        ttk.Label(overtime_box, text="已有时长列").grid(row=2, column=4, sticky="w", padx=(0, 6), pady=3)
-        duration_combo = ttk.Combobox(overtime_box, textvariable=duration_var, values=self._column_choices(), width=16)
+        ui_label(overtime_box, text="已有时长列").grid(row=2, column=4, sticky="w", padx=(0, 6), pady=3)
+        duration_combo = ModernComboBox(overtime_box, variable=duration_var, values=self._column_choices() or [""], width=16)
         duration_combo.grid(row=2, column=5, sticky="ew", pady=3)
-        ttk.Label(overtime_box, text="按起止时间计算时使用“处理时间列 - 派发时间列”；如果源表已有处理时长，则选择“使用已有处理时长列”并填写已有时长列。", foreground="#546179").grid(row=3, column=0, columnspan=6, sticky="w", pady=(2, 0))
+        ui_label(overtime_box, text="按起止时间计算时使用“处理时间列 - 派发时间列”；如果源表已有处理时长，则选择“使用已有处理时长列”并填写已有时长列。", foreground="#546179").grid(row=3, column=0, columnspan=6, sticky="w", padx=10, pady=(2, 10))
 
         self.plan_row_vars.append({
             "frame": card,
@@ -1386,37 +1730,38 @@ class SpecialConfigWindow(tk.Toplevel):
         self.columnconfigure(1, weight=1)
         self.rowconfigure(0, weight=1)
 
-        left = ttk.Frame(self, padding=(14, 14), style="Surface.TFrame")
-        left.grid(row=0, column=0, sticky="ns")
-        ttk.Label(left, text="月份", style="Section.TLabel").pack(anchor="w")
-        self.month_list = tk.Listbox(left, height=12, exportselection=False, width=12)
-        self.month_list.configure(background="#ffffff", foreground="#203047", selectbackground="#0c75c8", selectforeground="#ffffff", relief="flat")
-        self.month_list.pack(fill="y", expand=True, pady=(8, 0))
+        left = ctk.CTkFrame(self, fg_color=SURFACE, corner_radius=10, border_width=1, border_color=BORDER)
+        left.grid(row=0, column=0, sticky="ns", padx=(14, 7), pady=14)
+        ui_label(left, text="月份", style="Section.TLabel").pack(anchor="w", padx=14, pady=(14, 0))
+        month_shell = ctk.CTkFrame(left, fg_color=SURFACE, corner_radius=8, border_width=1, border_color=BORDER)
+        month_shell.pack(fill="both", expand=True, padx=14, pady=(8, 14))
+        self.month_list = ui_listbox(month_shell, height=12, exportselection=False, width=12)
+        self.month_list.pack(fill="both", expand=True, padx=8, pady=8)
         for month in range(1, 13):
             self.month_list.insert("end", f"{month}月")
         self.month_list.bind("<<ListboxSelect>>", self.on_month_select)
 
-        right = ttk.Frame(self, padding=(14, 14, 14, 14), style="Surface.TFrame")
-        right.grid(row=0, column=1, sticky="nsew")
+        right = ctk.CTkFrame(self, fg_color=SURFACE, corner_radius=10, border_width=1, border_color=BORDER)
+        right.grid(row=0, column=1, sticky="nsew", padx=(7, 14), pady=14)
         right.columnconfigure(0, weight=1)
         right.rowconfigure(5, weight=1)
 
-        ttk.Label(right, text="策略名称").grid(row=0, column=0, sticky="w")
-        ttk.Entry(right, textvariable=self.name_var).grid(row=1, column=0, sticky="ew", pady=(6, 12))
+        ui_label(right, text="策略名称").grid(row=0, column=0, sticky="w", padx=16, pady=(16, 0))
+        ui_entry(right, textvariable=self.name_var).grid(row=1, column=0, sticky="ew", padx=16, pady=(6, 12))
 
-        ttk.Label(right, text="质检策略").grid(row=2, column=0, sticky="w")
-        self.strategy_text = scrolledtext.ScrolledText(right, height=5, wrap="word")
-        self.strategy_text.grid(row=3, column=0, sticky="ew", pady=(6, 12))
+        ui_label(right, text="质检策略").grid(row=2, column=0, sticky="w", padx=16)
+        self.strategy_text = ctk.CTkTextbox(right, height=110, wrap="word", corner_radius=8, border_width=1, border_color=BORDER, fg_color="#fbfdff", text_color=TEXT)
+        self.strategy_text.grid(row=3, column=0, sticky="ew", padx=16, pady=(6, 12))
 
-        ttk.Label(right, text="质检关键词（用逗号、顿号或换行分隔）").grid(row=4, column=0, sticky="w")
-        self.keyword_text = scrolledtext.ScrolledText(right, height=12, wrap="word")
-        self.keyword_text.grid(row=5, column=0, sticky="nsew", pady=(6, 12))
+        ui_label(right, text="质检关键词（用逗号、顿号或换行分隔）").grid(row=4, column=0, sticky="w", padx=16)
+        self.keyword_text = ctk.CTkTextbox(right, height=260, wrap="word", corner_radius=8, border_width=1, border_color=BORDER, fg_color="#fbfdff", text_color=TEXT)
+        self.keyword_text.grid(row=5, column=0, sticky="nsew", padx=16, pady=(6, 12))
 
-        actions = ttk.Frame(right)
-        actions.grid(row=6, column=0, sticky="ew")
-        ttk.Button(actions, text="保存当前月份", command=self.save_current_month).pack(side="left")
-        ttk.Button(actions, text="恢复当前月份默认值", command=self.reset_current_month).pack(side="left", padx=8)
-        ttk.Button(actions, text="保存全部配置", command=self.save_all).pack(side="right")
+        actions = ctk.CTkFrame(right, fg_color="transparent")
+        actions.grid(row=6, column=0, sticky="ew", padx=16, pady=(0, 16))
+        ui_button(actions, text="保存当前月份", command=self.save_current_month, width=130).pack(side="left")
+        ui_button(actions, text="恢复当前月份默认值", command=self.reset_current_month, width=170).pack(side="left", padx=8)
+        ui_button(actions, text="保存全部配置", command=self.save_all, primary=True, width=140).pack(side="right")
 
     def on_month_select(self, _event=None):
         if not self.month_list.curselection():
