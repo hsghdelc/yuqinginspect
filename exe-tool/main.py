@@ -36,12 +36,45 @@ def app_dir():
     return Path(__file__).resolve().parent
 
 
+def apply_theme(window):
+    window.configure(background="#eef5fb")
+    style = ttk.Style(window)
+    try:
+        style.theme_use("clam")
+    except tk.TclError:
+        pass
+    style.configure(".", font=("Microsoft YaHei UI", 10), background="#eef5fb", foreground="#203047")
+    style.configure("TFrame", background="#eef5fb")
+    style.configure("Surface.TFrame", background="#ffffff", relief="solid", borderwidth=1)
+    style.configure("Card.TFrame", background="#f7fbff", relief="solid", borderwidth=1)
+    style.configure("DangerCard.TFrame", background="#fff1f1", relief="solid", borderwidth=1)
+    style.configure("TLabel", background="#eef5fb", foreground="#203047")
+    style.configure("Surface.TLabel", background="#ffffff", foreground="#203047")
+    style.configure("Muted.TLabel", background="#ffffff", foreground="#607089")
+    style.configure("CardMuted.TLabel", background="#f7fbff", foreground="#607089")
+    style.configure("DangerMuted.TLabel", background="#fff1f1", foreground="#8a4b4b")
+    style.configure("Title.TLabel", background="#eef5fb", foreground="#10233f", font=("Microsoft YaHei UI", 17, "bold"))
+    style.configure("Section.TLabel", background="#ffffff", foreground="#14345f", font=("Microsoft YaHei UI", 12, "bold"))
+    style.configure("Metric.TLabel", background="#f7fbff", foreground="#0c65c8", font=("Microsoft YaHei UI", 22, "bold"))
+    style.configure("DangerMetric.TLabel", background="#fff1f1", foreground="#d84343", font=("Microsoft YaHei UI", 22, "bold"))
+    style.configure("TButton", padding=(12, 7), background="#f8fbff", bordercolor="#cbd7e6", focusthickness=1)
+    style.configure("Primary.TButton", padding=(18, 9), background="#06979a", foreground="#ffffff", font=("Microsoft YaHei UI", 11, "bold"))
+    style.map("Primary.TButton", background=[("active", "#07878a"), ("disabled", "#a7cfd0")])
+    style.configure("TEntry", padding=(7, 5), fieldbackground="#ffffff", bordercolor="#cbd7e6")
+    style.configure("TCombobox", padding=(7, 5), fieldbackground="#ffffff", bordercolor="#cbd7e6")
+    style.configure("TNotebook", background="#eef5fb", borderwidth=0)
+    style.configure("TNotebook.Tab", padding=(18, 8), background="#e7eef7")
+    style.map("TNotebook.Tab", background=[("selected", "#ffffff")])
+    style.configure("Treeview", rowheight=30, background="#ffffff", fieldbackground="#ffffff", bordercolor="#dbe5ef")
+    style.configure("Treeview.Heading", background="#f3f7fb", foreground="#42536c", font=("Microsoft YaHei UI", 10, "bold"))
+
+
 class ReviewTool(BaseTk):
     def __init__(self):
         super().__init__()
         self.title("南方分中心舆情质检辅助工具")
-        self.geometry("980x640")
-        self.minsize(920, 580)
+        self.geometry("1120x720")
+        self.minsize(1040, 660)
 
         self.input_path = tk.StringVar()
         self.output_dir = tk.StringVar(value=str(Path.home() / "Desktop"))
@@ -51,17 +84,28 @@ class ReviewTool(BaseTk):
         self.scheme_options = []
         self.last_report_text = ""
         self.copy_button = None
+        self.metric_vars = {}
+        self.metrics_frame = None
+        self.report_preview = None
 
         self._set_app_icon()
+        apply_theme(self)
         self._build_ui()
         self.refresh_schemes()
         self._enable_drop()
 
     def _set_app_icon(self):
         icon_path = app_dir() / "assets" / "app_icon.ico"
-        if icon_path.exists():
+        png_path = app_dir() / "assets" / "app_icon.png"
+        if sys.platform.startswith("win") and icon_path.exists():
             try:
                 self.iconbitmap(str(icon_path))
+            except tk.TclError:
+                pass
+        elif png_path.exists():
+            try:
+                self._icon_image = tk.PhotoImage(file=str(png_path))
+                self.iconphoto(True, self._icon_image)
             except tk.TclError:
                 pass
 
@@ -69,63 +113,170 @@ class ReviewTool(BaseTk):
         self.columnconfigure(0, weight=1)
         self.rowconfigure(2, weight=1)
 
-        header = ttk.Frame(self, padding=(18, 16, 18, 8))
+        header = ttk.Frame(self, padding=(18, 14, 18, 10))
         header.grid(row=0, column=0, sticky="ew")
         header.columnconfigure(0, weight=1)
-        ttk.Label(
-            header,
-            text="南方分中心舆情质检辅助工具",
-            font=("Microsoft YaHei UI", 15, "bold"),
-        ).grid(row=0, column=0, sticky="w")
-        ttk.Button(header, text="方案配置", command=self.open_scheme_config).grid(row=0, column=1, padx=(10, 0))
-        ttk.Button(header, text="专项配置", command=self.open_special_config).grid(row=0, column=2, padx=(8, 0))
-        ttk.Button(header, text="导入配置", command=self.import_config).grid(row=0, column=3, padx=(8, 0))
-        ttk.Button(header, text="导出配置", command=self.export_config).grid(row=0, column=4, padx=(8, 0))
-        ttk.Button(header, text="恢复备份", command=self.open_backup_restore).grid(row=0, column=5, padx=(8, 0))
+        brand = ttk.Frame(header)
+        brand.grid(row=0, column=0, sticky="w")
+        ttk.Label(brand, text="南方分中心舆情质检辅助工具", style="Title.TLabel").grid(row=0, column=0, sticky="w")
+        tools = ttk.Frame(header)
+        tools.grid(row=0, column=1, sticky="e")
+        ttk.Button(tools, text="方案配置", command=self.open_scheme_config).grid(row=0, column=0, padx=(0, 8))
+        ttk.Button(tools, text="专项配置", command=self.open_special_config).grid(row=0, column=1, padx=(0, 8))
+        ttk.Button(tools, text="导入配置", command=self.import_config).grid(row=0, column=2, padx=(0, 8))
+        ttk.Button(tools, text="导出配置", command=self.export_config).grid(row=0, column=3, padx=(0, 8))
+        ttk.Button(tools, text="恢复备份", command=self.open_backup_restore).grid(row=0, column=4)
 
-        form = ttk.LabelFrame(self, text="文件与人员", padding=(14, 12))
-        form.grid(row=1, column=0, sticky="ew", padx=18, pady=(0, 12))
-        form.columnconfigure(1, weight=1)
-        form.columnconfigure(2, minsize=88)
+        main = ttk.Frame(self, padding=(18, 0, 18, 12))
+        main.grid(row=1, column=0, rowspan=2, sticky="nsew")
+        main.columnconfigure(0, weight=5)
+        main.columnconfigure(1, weight=6)
+        main.rowconfigure(1, weight=1)
 
-        self._row(form, 0, "源文件", self.input_path, self.choose_file)
-        self._row(form, 1, "输出目录", self.output_dir, self.choose_output_dir)
-        ttk.Label(form, text="质检方案", width=10, anchor="e").grid(row=2, column=0, sticky="e", padx=(0, 10), pady=7)
-        self.scheme_combo = ttk.Combobox(form, textvariable=self.scheme_var, state="readonly")
-        self.scheme_combo.grid(row=2, column=1, sticky="ew", pady=7)
+        task = ttk.Frame(main, style="Surface.TFrame", padding=(14, 12))
+        task.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=(0, 10))
+        task.columnconfigure(1, weight=1)
+        task.columnconfigure(2, minsize=88)
+        ttk.Label(task, text="任务准备", style="Section.TLabel").grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 10))
+        drop = ttk.Frame(task, style="Card.TFrame", padding=(16, 16))
+        drop.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(0, 12))
+        drop.columnconfigure(0, weight=1)
+        ttk.Label(drop, text="点击选择文件或拖拽文件到窗口", style="Muted.TLabel", anchor="center").grid(row=0, column=0, sticky="ew")
+        ttk.Button(drop, text="选择文件", command=self.choose_file).grid(row=1, column=0, pady=(10, 0))
+        self._form_row(task, 2, "源文件", self.input_path, self.choose_file, "选择")
+        self._form_row(task, 3, "输出目录", self.output_dir, self.choose_output_dir, "浏览")
+        ttk.Label(task, text="质检方案", style="Surface.TLabel", width=10, anchor="e").grid(row=4, column=0, sticky="e", padx=(0, 10), pady=7)
+        self.scheme_combo = ttk.Combobox(task, textvariable=self.scheme_var, state="readonly")
+        self.scheme_combo.grid(row=4, column=1, sticky="ew", pady=7)
+        ttk.Button(task, text="方案管理", command=self.open_scheme_config).grid(row=4, column=2, sticky="ew", padx=(10, 0), pady=7)
+        ttk.Label(task, text="质检人员", style="Surface.TLabel", width=10, anchor="e").grid(row=5, column=0, sticky="e", padx=(0, 10), pady=7)
+        ttk.Entry(task, textvariable=self.inspector).grid(row=5, column=1, sticky="ew", pady=7)
+        action_row = ttk.Frame(task, style="Surface.TFrame")
+        action_row.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(12, 0))
+        action_row.columnconfigure(0, weight=1)
+        action_row.columnconfigure(1, weight=1)
+        self.run_button = ttk.Button(action_row, text="开始质检", command=self.run, style="Primary.TButton")
+        self.run_button.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        ttk.Button(action_row, text="清空文件", command=self.clear_file).grid(row=0, column=1, sticky="ew", padx=(8, 0))
+        self.drop_tip = ttk.Label(task, text="", style="Muted.TLabel")
 
-        ttk.Label(form, text="质检人员", width=10, anchor="e").grid(row=3, column=0, sticky="e", padx=(0, 10), pady=7)
-        ttk.Entry(form, textvariable=self.inspector).grid(row=3, column=1, sticky="ew", pady=7)
+        result = ttk.Frame(main, style="Surface.TFrame", padding=(14, 12))
+        result.grid(row=0, column=1, sticky="nsew", pady=(0, 10))
+        result.columnconfigure(0, weight=1)
+        top_result = ttk.Frame(result, style="Surface.TFrame")
+        top_result.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        top_result.columnconfigure(0, weight=1)
+        ttk.Label(top_result, text="本次质检结果", style="Section.TLabel").grid(row=0, column=0, sticky="w")
+        self.task_time_var = tk.StringVar(value="任务时间：-")
+        ttk.Label(top_result, textvariable=self.task_time_var, style="Muted.TLabel").grid(row=0, column=1, sticky="e")
+        self.metrics_frame = ttk.Frame(result, style="Surface.TFrame")
+        self.metrics_frame.grid(row=1, column=0, sticky="ew", pady=(0, 12))
+        self._render_metric_cards([
+            {"title": "月度专项", "key": "special", "value": "0"},
+            {"title": "舆情提醒", "key": "reminder", "value": "0"},
+            {"title": "无效舆情", "key": "invalid", "value": "0"},
+            {"title": "超时预警", "key": "overtime", "value": "0", "danger": True},
+        ])
+        report_head = ttk.Frame(result, style="Surface.TFrame")
+        report_head.grid(row=2, column=0, sticky="ew")
+        report_head.columnconfigure(0, weight=1)
+        ttk.Label(report_head, text="报送内容", style="Section.TLabel").grid(row=0, column=0, sticky="w")
+        self.copy_button = ttk.Button(report_head, text="复制报送内容", command=self.copy_report, state="disabled")
+        self.copy_button.grid(row=0, column=1, sticky="e")
+        self.report_preview = scrolledtext.ScrolledText(result, height=4, wrap="word", relief="solid", borderwidth=1)
+        self.report_preview.grid(row=3, column=0, sticky="ew", pady=(8, 0))
+        self.report_preview.insert("1.0", "处理完成后将在这里显示日报送内容。")
+        self.report_preview.configure(state="disabled")
 
-        self.drop_tip = ttk.Label(form, text="", foreground="#546179")
+        logs = ttk.Notebook(main)
+        logs.grid(row=1, column=0, columnspan=2, sticky="nsew")
+        log_tab = ttk.Frame(logs, padding=(10, 10))
+        report_tab = ttk.Frame(logs, padding=(10, 10))
+        alert_tab = ttk.Frame(logs, padding=(10, 10))
+        logs.add(log_tab, text="处理日志")
+        logs.add(report_tab, text="质检报送")
+        logs.add(alert_tab, text="校验提醒")
+        log_tab.columnconfigure(0, weight=1)
+        log_tab.rowconfigure(1, weight=1)
+        log_tools = ttk.Frame(log_tab)
+        log_tools.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        log_tools.columnconfigure(0, weight=1)
+        ttk.Button(log_tools, text="清空日志", command=self.clear_log).grid(row=0, column=1, sticky="e")
+        self.log = self._make_log_table(log_tab, row=1)
+        report_tab.columnconfigure(0, weight=1)
+        report_tab.rowconfigure(0, weight=1)
+        self.report_detail = scrolledtext.ScrolledText(report_tab, wrap="word")
+        self.report_detail.grid(row=0, column=0, sticky="nsew")
+        self.report_detail.configure(state="disabled")
+        alert_tab.columnconfigure(0, weight=1)
+        alert_tab.rowconfigure(1, weight=1)
+        alert_tools = ttk.Frame(alert_tab)
+        alert_tools.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        alert_tools.columnconfigure(0, weight=1)
+        ttk.Button(alert_tools, text="清空日志", command=self.clear_log).grid(row=0, column=1, sticky="e")
+        self.alert_log = self._make_log_table(alert_tab, row=1)
 
-        body = ttk.Frame(self, padding=(18, 0, 18, 0))
-        body.grid(row=2, column=0, sticky="nsew")
-        body.columnconfigure(0, weight=1)
-        body.rowconfigure(1, weight=1)
+        footer = ttk.Frame(self, padding=(18, 0, 18, 10))
+        footer.grid(row=3, column=0, sticky="ew")
+        footer.columnconfigure(1, weight=1)
+        ttk.Label(footer, textvariable=self.status).grid(row=0, column=0, sticky="w")
+        self.footer_scheme_var = tk.StringVar(value="当前方案：-")
+        ttk.Label(footer, textvariable=self.footer_scheme_var).grid(row=0, column=1, sticky="e")
+        self._log("请选择源文件后开始质检。")
 
-        actions = ttk.Frame(body)
-        actions.grid(row=0, column=0, sticky="ew", pady=(0, 8))
-        actions.columnconfigure(0, weight=1)
-        self.run_button = ttk.Button(actions, text="开始处理", command=self.run)
-        self.run_button.grid(row=0, column=1, sticky="e")
-        ttk.Button(actions, text="清空日志", command=lambda: self.log.delete("1.0", "end")).grid(row=0, column=2, sticky="e", padx=(8, 0))
-        self.copy_button = ttk.Button(actions, text="复制日报送内容", command=self.copy_report, state="disabled")
-        self.copy_button.grid(row=0, column=3, sticky="e", padx=(8, 0))
-
-        log_frame = ttk.LabelFrame(body, text="处理日志", padding=(8, 8))
-        log_frame.grid(row=1, column=0, sticky="nsew")
-        log_frame.columnconfigure(0, weight=1)
-        log_frame.rowconfigure(0, weight=1)
-        self.log = scrolledtext.ScrolledText(log_frame, height=18, wrap="word")
-        self.log.grid(row=0, column=0, sticky="nsew")
-        self.log.tag_config("red", foreground="#c00000")
-        self._log("使用说明：选择或拖入舆情质检明细 Excel，确认输出目录和质检人员后点击“开始处理”。处理完成后可一键复制日报送内容。")
-
-    def _row(self, parent, row, label, var, command):
-        ttk.Label(parent, text=label, width=10, anchor="e").grid(row=row, column=0, sticky="e", padx=(0, 10), pady=7)
+    def _form_row(self, parent, row, label, var, command, button_text):
+        ttk.Label(parent, text=label, style="Surface.TLabel", width=10, anchor="e").grid(row=row, column=0, sticky="e", padx=(0, 10), pady=7)
         ttk.Entry(parent, textvariable=var).grid(row=row, column=1, sticky="ew", pady=7)
-        ttk.Button(parent, text="选择", command=command).grid(row=row, column=2, sticky="ew", padx=(10, 0), pady=7)
+        ttk.Button(parent, text=button_text, command=command).grid(row=row, column=2, sticky="ew", padx=(10, 0), pady=7)
+
+    def _render_metric_cards(self, cards):
+        for widget in self.metrics_frame.winfo_children():
+            widget.destroy()
+        self.metric_vars = {}
+        count = max(1, len(cards))
+        for idx in range(count):
+            self.metrics_frame.columnconfigure(idx, weight=1, uniform="metric")
+        for idx, card in enumerate(cards):
+            self._metric_card(
+                self.metrics_frame,
+                idx,
+                card.get("title", "质检计划"),
+                card.get("key", f"metric_{idx}"),
+                card.get("value", "0"),
+                card.get("danger") is True,
+            )
+
+    def _metric_card(self, parent, col, title, key, value, danger=False):
+        frame = ttk.Frame(parent, style="DangerCard.TFrame" if danger else "Card.TFrame", padding=(12, 12))
+        frame.grid(row=0, column=col, sticky="nsew", padx=(0 if col == 0 else 8, 0))
+        label_style = "DangerMetric.TLabel" if danger else "Metric.TLabel"
+        surface_style = "DangerMuted.TLabel" if danger else "CardMuted.TLabel"
+        self.metric_vars[key] = tk.StringVar(value=str(value))
+        ttk.Label(frame, text=title, style=surface_style, anchor="center").grid(row=0, column=0, sticky="ew")
+        ttk.Label(frame, textvariable=self.metric_vars[key], style=label_style, anchor="center").grid(row=1, column=0, sticky="ew", pady=(7, 2))
+        ttk.Label(frame, text="命中条数", style=surface_style, anchor="center").grid(row=2, column=0, sticky="ew")
+
+    def _make_log_table(self, parent, row=0):
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(row, weight=1)
+        frame = ttk.Frame(parent)
+        frame.grid(row=row, column=0, sticky="nsew")
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(0, weight=1)
+        tree = ttk.Treeview(frame, columns=("time", "status", "content"), show="headings")
+        tree.heading("time", text="时间")
+        tree.heading("status", text="状态")
+        tree.heading("content", text="内容")
+        tree.column("time", width=90, minwidth=80, anchor="center", stretch=False)
+        tree.column("status", width=90, minwidth=80, anchor="center", stretch=False)
+        tree.column("content", width=760, minwidth=300, anchor="w")
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        tree.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        tree.tag_configure("red", foreground="#c00000")
+        tree.tag_configure("success", foreground="#12805c")
+        return tree
 
     def _enable_drop(self):
         if not DND_FILES:
@@ -142,6 +293,7 @@ class ReviewTool(BaseTk):
             messagebox.showwarning("提示", "请拖入 .xlsx 或 .xlsm 文件")
             return
         self.input_path.set(str(path))
+        self.status.set("已选择源文件")
 
     def choose_file(self):
         path = filedialog.askopenfilename(
@@ -150,11 +302,17 @@ class ReviewTool(BaseTk):
         )
         if path:
             self.input_path.set(path)
+            self.status.set("已选择源文件")
 
     def choose_output_dir(self):
         path = filedialog.askdirectory(title="选择输出目录")
         if path:
             self.output_dir.set(path)
+            self.status.set("已选择输出目录")
+
+    def clear_file(self):
+        self.input_path.set("")
+        self.status.set("已清空源文件")
 
     def refresh_schemes(self):
         config = load_config()
@@ -169,6 +327,8 @@ class ReviewTool(BaseTk):
                 break
         if self.scheme_options:
             self.scheme_combo.current(selected_index)
+        if hasattr(self, "footer_scheme_var"):
+            self.footer_scheme_var.set("当前方案：" + (self.scheme_var.get() or "-"))
 
     def selected_scheme_id(self):
         selected_name = self.scheme_var.get()
@@ -258,6 +418,15 @@ class ReviewTool(BaseTk):
         self.copy_button.config(state="disabled")
         self.run_button.config(state="disabled")
         self.status.set("正在处理，请稍候...")
+        self.task_time_var.set("任务时间：" + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        self._set_report_text("正在处理，请稍候...")
+        self._set_detail_text(self.report_detail, "")
+        self._render_metric_cards([
+            {"title": "月度专项", "key": "special", "value": "0"},
+            {"title": "舆情提醒", "key": "reminder", "value": "0"},
+            {"title": "无效舆情", "key": "invalid", "value": "0"},
+            {"title": "超时预警", "key": "overtime", "value": "0", "danger": True},
+        ])
         self._log("开始处理：" + input_path)
         inspector = self.inspector.get()
         threading.Thread(target=self._run_worker, args=(input_path, output_dir, scheme_id, inspector), daemon=True).start()
@@ -284,6 +453,21 @@ class ReviewTool(BaseTk):
         self.status.set("处理完成")
         self.last_report_text = result["submission_text"]
         self.copy_button.config(state="normal")
+        cards = []
+        for idx, item in enumerate(result.get("plan_results") or []):
+            plan = item.get("plan") or {}
+            if not plan.get("output_sheet", True):
+                continue
+            title = plan.get("name") or "质检计划"
+            if plan.get("role") == "monthly_special":
+                title = "月度专项"
+            elif plan.get("role") == "reminder_review":
+                title = "舆情提醒"
+            elif plan.get("role") == "invalid_review":
+                title = "无效舆情"
+            cards.append({"title": title, "key": f"plan_{idx}", "value": len(item.get("rows") or [])})
+        cards.append({"title": "超时预警", "key": "overtime", "value": result["overtime_count"], "danger": True})
+        self._render_metric_cards(cards)
         self._log("专项质检：" + result["special_name"])
         self._log(f"专项命中：{result['special_count']} 条")
         self._log(f"舆情提醒复核：{result['reminder_count']} 条")
@@ -296,6 +480,8 @@ class ReviewTool(BaseTk):
             self._log("超时预警：未查询到超时舆情")
         self._log("统计日报文本：" + result["report_text"])
         self._log("质检报送内容：" + result["submission_text"])
+        self._set_report_text(result["submission_text"])
+        self._set_detail_text(self.report_detail, result["submission_text"] + "\n\n" + result["report_text"])
         if messagebox.askyesno("导出质检明细", "是否导出质检明细文件？"):
             try:
                 output_path = export_quality_file(result, progress_callback=self._log)
@@ -313,7 +499,7 @@ class ReviewTool(BaseTk):
     def _run_failed(self, exc):
         self.run_button.config(state="normal")
         self.status.set("处理失败")
-        self._log("处理失败：" + str(exc))
+        self._log("处理失败：" + str(exc), "red")
         messagebox.showerror("处理失败", str(exc))
 
     def copy_report(self):
@@ -324,12 +510,34 @@ class ReviewTool(BaseTk):
         self.clipboard_append(self.last_report_text)
         self.status.set("日报送内容已复制")
 
+    def clear_log(self):
+        for tree in (self.log, self.alert_log):
+            for item in tree.get_children():
+                tree.delete(item)
+
+    def _set_report_text(self, text):
+        if not self.report_preview:
+            return
+        self._set_detail_text(self.report_preview, text)
+
+    @staticmethod
+    def _set_detail_text(widget, text):
+        widget.configure(state="normal")
+        widget.delete("1.0", "end")
+        widget.insert("1.0", text)
+        widget.configure(state="disabled")
+
     def _log(self, text, tag=None):
-        if tag:
-            self.log.insert("end", text + "\n", tag)
-        else:
-            self.log.insert("end", text + "\n")
-        self.log.see("end")
+        status = "预警" if tag == "red" or "超时预警" in text or "失败" in text else "信息"
+        if "完成" in text or "通过" in text or "成功" in text:
+            status = "成功"
+        values = (datetime.now().strftime("%H:%M:%S"), status, text)
+        row_tag = "red" if status == "预警" else ("success" if status == "成功" else "")
+        self.log.insert("", "end", values=values, tags=(row_tag,))
+        self.log.yview_moveto(1)
+        if status == "预警":
+            self.alert_log.insert("", "end", values=values, tags=("red",))
+            self.alert_log.yview_moveto(1)
 
 
 class BackupRestoreWindow(tk.Toplevel):
@@ -340,6 +548,7 @@ class BackupRestoreWindow(tk.Toplevel):
         self.geometry("620x420")
         self.minsize(560, 360)
         self.transient(parent)
+        apply_theme(self)
         self.backup_dir = app_dir() / "config_backups"
         self.backups = []
         self._build_ui()
@@ -422,9 +631,10 @@ class SchemeConfigWindow(tk.Toplevel):
         super().__init__(parent)
         self.parent = parent
         self.title("方案配置")
-        self.geometry("1180x800")
-        self.minsize(1040, 700)
+        self.geometry("1220x820")
+        self.minsize(1080, 720)
         self.transient(parent)
+        apply_theme(self)
 
         self.config_data = load_config()
         self.schemes = copy.deepcopy(self.config_data.get("schemes") or {DEFAULT_SCHEME_ID: DEFAULT_SCHEME})
@@ -450,17 +660,18 @@ class SchemeConfigWindow(tk.Toplevel):
         self.columnconfigure(1, weight=1)
         self.rowconfigure(0, weight=1)
 
-        left = ttk.Frame(self, padding=(14, 14))
+        left = ttk.Frame(self, padding=(14, 14), style="Surface.TFrame")
         left.grid(row=0, column=0, sticky="ns")
-        ttk.Label(left, text="质检方案").pack(anchor="w")
+        ttk.Label(left, text="质检方案", style="Section.TLabel").pack(anchor="w")
         self.scheme_list = tk.Listbox(left, height=14, exportselection=False, width=20)
+        self.scheme_list.configure(background="#ffffff", foreground="#203047", selectbackground="#0c75c8", selectforeground="#ffffff", relief="flat")
         self.scheme_list.pack(fill="y", expand=True, pady=(8, 10))
         self.scheme_list.bind("<<ListboxSelect>>", self.on_scheme_select)
         ttk.Button(left, text="新增方案", command=self.add_scheme).pack(fill="x", pady=(0, 6))
         ttk.Button(left, text="复制方案", command=self.copy_scheme).pack(fill="x", pady=(0, 6))
         ttk.Button(left, text="删除方案", command=self.delete_scheme).pack(fill="x")
 
-        right = ttk.Frame(self, padding=(0, 14, 14, 14))
+        right = ttk.Frame(self, padding=(14, 14, 14, 14), style="Surface.TFrame")
         right.grid(row=0, column=1, sticky="nsew")
         right.columnconfigure(0, weight=1)
         right.rowconfigure(1, weight=1)
@@ -1157,9 +1368,10 @@ class SpecialConfigWindow(tk.Toplevel):
         super().__init__(parent)
         self.parent = parent
         self.title("专项质检配置")
-        self.geometry("780x560")
-        self.minsize(720, 500)
+        self.geometry("900x640")
+        self.minsize(820, 560)
         self.transient(parent)
+        apply_theme(self)
 
         self.config_data = load_config()
         self.plans = copy.deepcopy(self.config_data.get("monthly_special_plans") or get_default_monthly_plans())
@@ -1174,16 +1386,17 @@ class SpecialConfigWindow(tk.Toplevel):
         self.columnconfigure(1, weight=1)
         self.rowconfigure(0, weight=1)
 
-        left = ttk.Frame(self, padding=(14, 14))
+        left = ttk.Frame(self, padding=(14, 14), style="Surface.TFrame")
         left.grid(row=0, column=0, sticky="ns")
-        ttk.Label(left, text="月份").pack(anchor="w")
+        ttk.Label(left, text="月份", style="Section.TLabel").pack(anchor="w")
         self.month_list = tk.Listbox(left, height=12, exportselection=False, width=12)
+        self.month_list.configure(background="#ffffff", foreground="#203047", selectbackground="#0c75c8", selectforeground="#ffffff", relief="flat")
         self.month_list.pack(fill="y", expand=True, pady=(8, 0))
         for month in range(1, 13):
             self.month_list.insert("end", f"{month}月")
         self.month_list.bind("<<ListboxSelect>>", self.on_month_select)
 
-        right = ttk.Frame(self, padding=(0, 14, 14, 14))
+        right = ttk.Frame(self, padding=(14, 14, 14, 14), style="Surface.TFrame")
         right.grid(row=0, column=1, sticky="nsew")
         right.columnconfigure(0, weight=1)
         right.rowconfigure(5, weight=1)
