@@ -815,7 +815,80 @@ def _apply_plan_overtime(rows, plan, headers, duration_col):
     return updated_rows, overtime_ids
 
 
-def process_file(input_path, output_dir=None, inspector="未命名质检员", run_date=None, config_path=None, progress_callback=None, scheme_id=None):
+def _daily_submission_text(run_date, plan_results):
+    yesterday = run_date - timedelta(days=1)
+    period = f"{yesterday.month}月{yesterday.day}日8点-{run_date.month}月{run_date.day}日8点期间"
+    monthly = [item for item in plan_results if item["plan"].get("role") == "monthly_special"]
+    others = [
+        item
+        for item in plan_results
+        if item["plan"].get("role") != "monthly_special" and item["plan"].get("output_sheet", True)
+    ]
+    ordered = monthly + others
+    parts = []
+    for item in ordered:
+        plan = item["plan"]
+        name = plan.get("name", "质检计划")
+        if plan.get("role") == "reminder_review":
+            name = "舆情提醒"
+        elif plan.get("role") == "invalid_review":
+            name = "无效舆情"
+        parts.append(f"{name}{len(item['rows'])}件")
+    if not parts:
+        parts.append("质检计划0件")
+    return f"{period}，共质检" + "，".join(parts) + "，未发现升级事件。"
+
+
+def export_quality_file(result, output_dir=None, progress_callback=None):
+    def progress(message):
+        if progress_callback:
+            progress_callback(message)
+
+    output_dir = Path(output_dir or result["output_dir"])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out_wb = Workbook()
+    out_wb.remove(out_wb.active)
+    progress("导出最终质检明细...")
+    for item in result["plan_results"]:
+        plan = item["plan"]
+        if not plan.get("output_sheet", True):
+            continue
+        sheet_name = plan.get("name", "质检计划")
+        if plan.get("role") == "monthly_special" and not sheet_name.endswith("复核"):
+            sheet_name += "复核"
+        _append_review_sheet(
+            out_wb,
+            _safe_sheet_name(sheet_name),
+            result["header"],
+            item["rows"],
+            result["inspector"],
+            plan=plan,
+            source_headers=result["source_headers"],
+            duration_col=result["duration_col"],
+            month_plan=result["month_plan"] if plan.get("match_type") == "按月份专项关键词" else None,
+        )
+    if not out_wb.worksheets:
+        _append_review_sheet(
+            out_wb,
+            "质检结果",
+            result["header"],
+            [],
+            result["inspector"],
+            source_headers=result["source_headers"],
+            duration_col=result["duration_col"],
+        )
+    report_ws = out_wb.create_sheet("质检报送")
+    report_ws["A1"] = result["submission_text"]
+    report_ws.column_dimensions["A"].width = 120
+
+    output_path = output_dir / result["output_file_name"]
+    out_wb.save(output_path)
+    result["output_path"] = str(output_path)
+    progress("保存完成")
+    return str(output_path)
+
+
+def process_file(input_path, output_dir=None, inspector="未命名质检员", run_date=None, config_path=None, progress_callback=None, scheme_id=None, save_output=True):
     def progress(message):
         if progress_callback:
             progress_callback(message)
@@ -923,47 +996,31 @@ def process_file(input_path, output_dir=None, inspector="未命名质检员", ru
         f"负面营销类舆情{e}件（重复事件{f}件，民生事件{h}件）。"
     )
 
-    out_wb = Workbook()
-    out_wb.remove(out_wb.active)
-    progress("导出最终质检明细...")
-    for result in plan_results:
-        plan = result["plan"]
-        if not plan.get("output_sheet", True):
-            continue
-        sheet_name = plan.get("name", "质检计划")
-        if plan.get("role") == "monthly_special" and not sheet_name.endswith("复核"):
-            sheet_name += "复核"
-        _append_review_sheet(
-            out_wb,
-            _safe_sheet_name(sheet_name),
-            header,
-            result["rows"],
-            inspector,
-            plan=plan,
-            source_headers=headers,
-            duration_col=duration_col,
-            month_plan=month_plan if plan.get("match_type") == "按月份专项关键词" else None,
-        )
-    if not out_wb.worksheets:
-        _append_review_sheet(out_wb, "质检结果", header, [], inspector, source_headers=headers, duration_col=duration_col)
-
     yesterday = run_date - timedelta(days=1)
     file_name = f"{yesterday.year}年{yesterday.month}月{yesterday.day}日8点-{run_date.year}年{run_date.month}月{run_date.day}日8点舆情质检明细({inspector}).xlsx"
-    output_path = output_dir / file_name
-    out_wb.save(output_path)
-    progress("保存完成")
-
-    return {
-        "output_path": str(output_path),
+    result = {
+        "output_path": "",
+        "output_dir": str(output_dir),
+        "output_file_name": file_name,
         "report_text": report_text,
+        "submission_text": _daily_submission_text(run_date, plan_results),
         "special_name": month_plan["name"],
         "special_count": next((len(item["rows"]) for item in plan_results if item["plan"].get("role") == "monthly_special"), 0),
         "reminder_count": next((len(item["rows"]) for item in plan_results if item["plan"].get("role") == "reminder_review"), 0),
         "invalid_count": next((len(item["rows"]) for item in plan_results if item["plan"].get("role") == "invalid_review"), 0),
         "overtime_count": len(all_overtime_ids),
         "overtime_ids": all_overtime_ids,
-        "plan_results": [
+        "plan_summaries": [
             {"name": item["plan"].get("name", "质检计划"), "count": len(item["rows"]), "overtime_count": len(item["overtime_ids"])}
             for item in plan_results
         ],
+        "plan_results": plan_results,
+        "header": header,
+        "source_headers": headers,
+        "duration_col": duration_col,
+        "month_plan": month_plan,
+        "inspector": inspector,
     }
+    if save_output:
+        export_quality_file(result, output_dir, progress_callback)
+    return result

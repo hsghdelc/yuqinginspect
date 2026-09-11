@@ -18,6 +18,7 @@ from processor import (
     DEFAULT_SCHEME,
     DEFAULT_SCHEME_ID,
     copy_json,
+    export_quality_file,
     load_config,
     load_workbook_headers,
     process_file,
@@ -51,9 +52,18 @@ class ReviewTool(BaseTk):
         self.last_report_text = ""
         self.copy_button = None
 
+        self._set_app_icon()
         self._build_ui()
         self.refresh_schemes()
         self._enable_drop()
+
+    def _set_app_icon(self):
+        icon_path = app_dir() / "assets" / "app_icon.ico"
+        if icon_path.exists():
+            try:
+                self.iconbitmap(str(icon_path))
+            except tk.TclError:
+                pass
 
     def _build_ui(self):
         self.columnconfigure(0, weight=1)
@@ -260,6 +270,7 @@ class ReviewTool(BaseTk):
                 inspector,
                 progress_callback=self._thread_log,
                 scheme_id=scheme_id,
+                save_output=False,
             )
             self.after(0, self._run_success, result)
         except Exception as exc:
@@ -271,7 +282,7 @@ class ReviewTool(BaseTk):
     def _run_success(self, result):
         self.run_button.config(state="normal")
         self.status.set("处理完成")
-        self.last_report_text = result["report_text"]
+        self.last_report_text = result["submission_text"]
         self.copy_button.config(state="normal")
         self._log("专项质检：" + result["special_name"])
         self._log(f"专项命中：{result['special_count']} 条")
@@ -283,9 +294,21 @@ class ReviewTool(BaseTk):
             messagebox.showwarning("超时预警", text)
         else:
             self._log("超时预警：未查询到超时舆情")
-        self._log("日报送文本：" + result["report_text"])
-        self._log("输出文件：" + result["output_path"])
-        messagebox.showinfo("完成", "舆情质检明细已生成。")
+        self._log("统计日报文本：" + result["report_text"])
+        self._log("质检报送内容：" + result["submission_text"])
+        if messagebox.askyesno("导出质检明细", "是否导出质检明细文件？"):
+            try:
+                output_path = export_quality_file(result, progress_callback=self._log)
+            except Exception as exc:
+                self.status.set("导出失败")
+                self._log("导出失败：" + str(exc), "red")
+                messagebox.showerror("导出失败", str(exc))
+                return
+            self._log("输出文件：" + output_path)
+            messagebox.showinfo("完成", "舆情质检明细已生成。")
+        else:
+            self._log("用户选择不导出质检明细。")
+            messagebox.showinfo("完成", "处理完成，未导出质检明细。")
 
     def _run_failed(self, exc):
         self.run_button.config(state="normal")

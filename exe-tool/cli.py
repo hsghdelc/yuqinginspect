@@ -18,6 +18,7 @@ def main():
     print("无效复核:", result["invalid_count"])
     print("超时:", result["overtime_count"])
     print("日报送文本:", result["report_text"])
+    print("质检报送内容:", result["submission_text"])
     print("输出文件:", result["output_path"])
 
 

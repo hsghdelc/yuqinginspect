@@ -7,7 +7,9 @@ python -m PyInstaller ^
   --noconfirm ^
   --clean ^
   --windowed ^
+  --icon "assets\app_icon.ico" ^
   --add-data "config.json;." ^
+  --add-data "assets;assets" ^
   --collect-data tkinterdnd2 ^
   --name "南方分中心舆情质检辅助工具" ^
   main.py
