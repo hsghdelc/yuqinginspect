@@ -282,7 +282,7 @@ class ReviewTool(BaseTk):
     def _run_success(self, result):
         self.run_button.config(state="normal")
         self.status.set("处理完成")
-        self.last_report_text = result["submission_text"]
+        self.last_report_text = result["report_text"]
         self.copy_button.config(state="normal")
         self._log("专项质检：" + result["special_name"])
         self._log(f"专项命中：{result['special_count']} 条")
