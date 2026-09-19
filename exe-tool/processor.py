@@ -956,18 +956,27 @@ def process_file(input_path, output_dir=None, inspector="未命名质检员", ru
     progress(f"当前方案：{scheme.get('name', DEFAULT_SCHEME['name'])}")
     progress(f"专项匹配列：{', '.join(get_column_letter(col) for col in special_target_columns)}")
 
-    filtered_rows = []
+    all_rows = []
     scanned_count = 0
-    ag_count = 0
-    for row in source_rows:
+    last_keep_row_num = 1
+    for row_num, row in enumerate(source_rows, start=2):
         scanned_count += 1
-        if not _row_text(row, col_keep):
+        row = tuple(row)
+        all_rows.append((row_num, row))
+        if _row_text(row, col_keep):
+            last_keep_row_num = row_num
+
+    filtered_rows = []
+    keep_count = 0
+    for row_num, row in all_rows:
+        # 还原宏口径：只删除“保留列最后一个非空行”之前的空白行，尾部空白行保留。
+        if row_num <= last_keep_row_num and not _row_text(row, col_keep):
             continue
-        ag_count += 1
+        keep_count += 1
         if _row_text(row, col_company) in companies:
-            filtered_rows.append(tuple(row))
+            filtered_rows.append(row)
     wb.close()
-    progress(f"AG 列非空：{ag_count} 行；公司筛选后保留：{len(filtered_rows)} 行")
+    progress(f"基础保留：{keep_count} 行；公司筛选后保留：{len(filtered_rows)} 行")
 
     duration_col = max_col + 1
     header = _set_row_value(header, duration_col, "处理时长(分钟)")
