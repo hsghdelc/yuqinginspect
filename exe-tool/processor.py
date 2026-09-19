@@ -720,23 +720,35 @@ def _countifs(rows, pairs):
 def _split_items(text):
     if isinstance(text, list):
         return [str(item).strip() for item in text if str(item).strip()]
-    return [item.strip() for item in str(text or "").replace("，", ",").replace("、", ",").replace("\n", ",").split(",") if item.strip()]
+    return [item.strip() for item in str(text or "").replace("，", ",").replace("、", ",").replace("|", ",").replace("\n", ",").split(",") if item.strip()]
+
+
+def _condition_values(expected):
+    text = str(expected or "").strip()
+    if not text:
+        return [""]
+    text = text.replace("“", "").replace("”", "").replace('"', "").replace("'", "")
+    text = text.replace("或者", "或")
+    if "或" in text and "," not in text and "，" not in text and "、" not in text and "|" not in text:
+        return [item.strip() for item in text.split("或") if item.strip()]
+    return _split_items(text)
 
 
 def _match_text(value, expected, operator):
     actual = _cell_text(value)
     expected = str(expected or "").strip()
-    if operator == "包含":
-        return expected in actual
-    if operator == "不包含":
-        return expected not in actual
-    if operator == "不等于":
-        return actual != expected
     if operator == "为空":
         return actual == ""
-    if operator == "非空":
+    if operator in {"非空", "不为空"}:
         return actual != ""
-    return actual == expected
+    values = _condition_values(expected)
+    if operator == "包含":
+        return any(item in actual for item in values)
+    if operator == "不包含":
+        return all(item not in actual for item in values)
+    if operator == "不等于":
+        return all(actual != item for item in values)
+    return any(actual == item for item in values)
 
 
 def _match_conditions(row, conditions, headers):

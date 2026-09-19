@@ -887,7 +887,7 @@ class SchemeConfigWindow(tk.Toplevel):
         ttk.Button(keyword_frame, text="填入公司名单", command=lambda: self._fill_company_keywords(keywords_var)).grid(row=0, column=1)
         ttk.Entry(card, textvariable=conditions_var).grid(row=2, column=2, columnspan=2, sticky="ew", pady=3)
 
-        ttk.Label(card, text="多个关键词用逗号、顿号或换行分隔；条件格式：列=值，多条件用分号，例如 R=否;S=是。", foreground="#546179").grid(row=3, column=0, columnspan=4, sticky="w", pady=(0, 6))
+        ttk.Label(card, text="关键词用逗号、顿号或换行分隔；条件示例：A不为空；A=同意,不同意；R=否;S=是。", foreground="#546179").grid(row=3, column=0, columnspan=4, sticky="w", pady=(0, 6))
 
         sample_box = ttk.LabelFrame(card, text="随机抽样", padding=(8, 6))
         sample_box.grid(row=4, column=0, columnspan=4, sticky="ew", pady=(0, 8))
@@ -1085,6 +1085,8 @@ class SchemeConfigWindow(tk.Toplevel):
                 continue
             if operator == "等于":
                 parts.append(f"{column}={value}")
+            elif operator in {"非空", "不为空", "为空"}:
+                parts.append(f"{column}{operator}")
             else:
                 parts.append(f"{column}{operator}{value}")
         return ";".join(parts)
@@ -1097,7 +1099,16 @@ class SchemeConfigWindow(tk.Toplevel):
             if not item:
                 continue
             operator = "等于"
-            if "!=" in item:
+            if item.endswith("不为空"):
+                column, value = item[:-3], ""
+                operator = "不为空"
+            elif item.endswith("非空"):
+                column, value = item[:-2], ""
+                operator = "非空"
+            elif item.endswith("为空"):
+                column, value = item[:-2], ""
+                operator = "为空"
+            elif "!=" in item:
                 column, value = item.split("!=", 1)
                 operator = "不等于"
             elif "=" in item:
